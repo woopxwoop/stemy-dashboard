@@ -1,0 +1,101 @@
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+
+.chart-toolbar {
+  justify-content: space-between;
+  row-gap: 10px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group--file {
+  min-width: 260px;
+}
+
+.toolbar-group--bounds {
+  justify-content: flex-end;
+}
+
+.toolbar-label {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-input,
+.control-button,
+.control-file {
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.12);
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.control-input,
+.control-file {
+  padding: 6px 8px;
+}
+
+.control-input {
+  width: 110px;
+}
+
+.control-button {
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.control-button:hover,
+.control-input:hover,
+.control-file:hover {
+  background: rgba(128, 128, 128, 0.2);
+  border-color: rgba(128, 128, 128, 0.65);
+}
+
+.control-button:active {
+  transform: translateY(1px);
+}
+
+.control-button:focus-visible,
+.control-input:focus-visible,
+.control-file:focus-visible {
+  outline: 2px solid rgba(100, 149, 237, 0.8);
+  outline-offset: 1px;
+}
+
+.file-name {
+  font-size: 12px;
+  opacity: 0.8;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-error {
+  color: #ff8080;
+  font-size: 12px;
+  flex-basis: 100%;
+}
