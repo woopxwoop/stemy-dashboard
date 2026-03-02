@@ -33,7 +33,7 @@ function EChart() {
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
   // Fallback local series when no dataset is loaded.
-  const [normalArray] = useState(generateNormalArray(25, 25, 5));
+  const [normalArray] = useState(generateNormalArray(10, 37, 0.3));
 
   // DOM refs.
   const chartRef = useRef(null);

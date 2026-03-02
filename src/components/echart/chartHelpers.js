@@ -8,7 +8,18 @@ export const DEFAULT_BOUNDS = {
   upper: 26,
 };
 
-export const DEFAULT_X_LABELS = ["1h", "2h", "3h", "4h", "5h", "6h", "7h"];
+export const DEFAULT_X_LABELS = [
+  "1h",
+  "2h",
+  "3h",
+  "4h",
+  "5h",
+  "6h",
+  "7h",
+  "8h",
+  "9h",
+  "10h",
+];
 
 // Resolve UI bounds from preset "expected" thresholds first, then hard limits.
 export const getBoundsFromPreset = (presetKey) => {

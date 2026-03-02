@@ -189,12 +189,12 @@
 .chart-settings-popover {
   position: absolute;
   top: 30px;
-  left: 8px;
+  left: auto;
   right: 8px;
   z-index: 20;
   display: grid;
   gap: 10px;
-  width: auto;
+  width: min(360px, calc(100% - 16px));
   max-width: 360px;
   max-height: calc(100% - 40px);
   overflow: auto;
