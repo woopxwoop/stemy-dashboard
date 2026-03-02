@@ -14,7 +14,7 @@ const components = {
   echart: EChart,
 };
 
-function App() {
+function Dockview() {
   const dockviewApiRef = useRef(null);
   const panelCountRef = useRef(0);
   const containerRef = useRef(null);
@@ -102,4 +102,4 @@ function App() {
   );
 }
 
-export default App;
+export default Dockview;
