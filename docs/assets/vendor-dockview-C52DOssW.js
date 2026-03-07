@@ -1,4 +1,4 @@
-import{R as x,a as Nt}from"./vendor-C-__Zrs8.js";function Lt(r,e){e===void 0&&(e={});var t=e.insertAt;if(!(typeof document>"u")){var i=document.head||document.getElementsByTagName("head")[0],n=document.createElement("style");n.type="text/css",t==="top"&&i.firstChild?i.insertBefore(n,i.firstChild):i.appendChild(n),n.styleSheet?n.styleSheet.cssText=r:n.appendChild(document.createTextNode(r))}}var Mt=`.dv-scrollable {
+import{R as x,a as Nt}from"./vendor-QW_gH97L.js";function Lt(r,e){e===void 0&&(e={});var t=e.insertAt;if(!(typeof document>"u")){var i=document.head||document.getElementsByTagName("head")[0],n=document.createElement("style");n.type="text/css",t==="top"&&i.firstChild?i.insertBefore(n,i.firstChild):i.appendChild(n),n.styleSheet?n.styleSheet.cssText=r:n.appendChild(document.createTextNode(r))}}var Mt=`.dv-scrollable {
   position: relative;
   overflow: hidden;
 }
