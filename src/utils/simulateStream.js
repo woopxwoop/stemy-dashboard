@@ -3,7 +3,8 @@ export const STREAM_PRESETS = {
     label: "Temperature (°C)",
     config: {
       intervalMs: 1000,
-      windowSize: 5000,
+      maxDays: null,
+      samplesPerDay: 2,
       initialValue: 37.0,
       averageValue: 37.0,
       volatility: 0.1,
@@ -20,7 +21,8 @@ export const STREAM_PRESETS = {
     label: "pH (Matrigel environment)",
     config: {
       intervalMs: 1000,
-      windowSize: 5000,
+      maxDays: null,
+      samplesPerDay: 2,
       initialValue: 7.3,
       averageValue: 7.3,
       volatility: 0.04,
@@ -39,7 +41,8 @@ export const DEFAULT_STREAM_PRESET = "temperature";
 
 export function createChartDataStream({
   intervalMs = 1000,
-  windowSize = 60,
+  maxDays = null,
+  samplesPerDay = 6,
   initialValue = 25,
   averageValue = initialValue,
   volatility = 1.8,
@@ -49,7 +52,7 @@ export function createChartDataStream({
   outlierVolatilityFactor = 2.8,
   min = -Infinity,
   max = Infinity,
-  labelFormatter = (tick) => `${tick}s`,
+  labelFormatter = (day) => `Day ${day}`,
 } = {}) {
   let timer = null;
   let tick = 0;
@@ -57,6 +60,11 @@ export function createChartDataStream({
   let movingAverage = averageValue;
   let labels = [];
   let values = [];
+  let times = [];
+  const hasWindow = Number.isFinite(maxDays) && maxDays > 0;
+  const windowSize = hasWindow
+    ? Math.max(1, maxDays * Math.max(1, samplesPerDay))
+    : null;
 
   const clamp = (value) => Math.max(min, Math.min(max, value));
   const randomNormal = () => {
@@ -83,15 +91,26 @@ export function createChartDataStream({
 
   const pushPoint = () => {
     tick += 1;
-    labels.push(labelFormatter(tick));
-    values.push(nextValue());
+    const safeSamplesPerDay = Math.max(1, samplesPerDay);
+    const day = Math.ceil(tick / safeSamplesPerDay);
+    const sampleInDay = ((tick - 1) % safeSamplesPerDay) + 1;
+    const time = day - 1 + (sampleInDay - 0.5) / safeSamplesPerDay;
 
-    if (labels.length > windowSize) labels = labels.slice(-windowSize);
-    if (values.length > windowSize) values = values.slice(-windowSize);
+    labels.push(labelFormatter(day));
+    values.push(nextValue());
+    times.push(Number(time.toFixed(4)));
+
+    if (windowSize !== null) {
+      if (labels.length > windowSize) labels = labels.slice(-windowSize);
+      if (values.length > windowSize) values = values.slice(-windowSize);
+      if (times.length > windowSize) times = times.slice(-windowSize);
+    }
 
     return {
       labels: [...labels],
       values: [...values],
+      times: [...times],
+      samplesPerDay: safeSamplesPerDay,
     };
   };
 
@@ -119,6 +138,7 @@ export function createChartDataStream({
       movingAverage = averageValue;
       labels = [];
       values = [];
+      times = [];
     },
 
     isRunning() {

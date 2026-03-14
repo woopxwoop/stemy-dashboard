@@ -6,13 +6,44 @@ import {
 } from "../../utils/simulateStream";
 import { parseManualNumber, computeOutlierPoints } from "./chartHelpers";
 
+const buildTimelineXValues = (dataset) => {
+  if (!dataset) return [];
+
+  const labels = Array.isArray(dataset.labels) ? dataset.labels : [];
+  const timeValues = Array.isArray(dataset.times) ? dataset.times : null;
+  const fallbackSamplesPerDay = Math.max(1, Number(dataset.samplesPerDay) || 8);
+
+  const dayByIndex = labels.map((label, index) => {
+    const match = String(label ?? "").match(/(\d+)/);
+    if (match) return Math.max(1, Number(match[1]));
+    return Math.max(1, Math.ceil((index + 1) / fallbackSamplesPerDay));
+  });
+
+  const dayCounts = new Map();
+  dayByIndex.forEach((day) => {
+    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+  });
+
+  const daySeen = new Map();
+
+  return dayByIndex.map((day, index) => {
+    if (timeValues && Number.isFinite(timeValues[index])) {
+      return timeValues[index];
+    }
+
+    const seen = (daySeen.get(day) ?? 0) + 1;
+    daySeen.set(day, seen);
+    const count = Math.max(1, dayCounts.get(day) ?? 1);
+    return day - 1 + (seen - 0.5) / count;
+  });
+};
+
 function useStreamingDataset({ manualBounds, streamPresetKey }) {
   const [dataset, setDataset] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamOutlierPoints, setStreamOutlierPoints] = useState([]);
 
   const streamRef = useRef(null);
-  const previousStreamLabelsRef = useRef([]);
   const boundsRef = useRef(manualBounds);
   const datasetRef = useRef(dataset);
 
@@ -39,10 +70,12 @@ function useStreamingDataset({ manualBounds, streamPresetKey }) {
         return;
       }
 
+      const xValues = buildTimelineXValues(nextDataset);
+
       setStreamOutlierPoints(
         computeOutlierPoints(
           nextDataset.values,
-          nextDataset.labels,
+          xValues,
           lowerFence,
           upperFence,
         ),
@@ -71,7 +104,6 @@ function useStreamingDataset({ manualBounds, streamPresetKey }) {
 
   const startStream = useCallback(() => {
     streamRef.current?.stop?.();
-    previousStreamLabelsRef.current = [];
     setStreamOutlierPoints([]);
 
     const selectedPreset =
@@ -86,37 +118,20 @@ function useStreamingDataset({ manualBounds, streamPresetKey }) {
       const upperFence = parseManualNumber(boundsRef.current.upper);
 
       if (lowerFence === null || upperFence === null) {
-        previousStreamLabelsRef.current = nextDataset.labels;
         setStreamOutlierPoints([]);
         return;
       }
 
-      const nextLabels = nextDataset.labels;
-      const nextValues = nextDataset.values;
-      const latestIndex = nextValues.length - 1;
-      if (latestIndex < 0) return;
+      const xValues = buildTimelineXValues(nextDataset);
 
-      const latestLabel = nextLabels[latestIndex];
-      const latestValue = nextValues[latestIndex];
-      const previousLabels = previousStreamLabelsRef.current;
-      const droppedLabel =
-        previousLabels.length === nextLabels.length ? previousLabels[0] : null;
-
-      setStreamOutlierPoints((prev) => {
-        let next = prev;
-
-        if (droppedLabel !== null) {
-          next = next.filter(([label]) => label !== droppedLabel);
-        }
-
-        if (latestValue < lowerFence || latestValue > upperFence) {
-          next = [...next, [latestLabel, latestValue]];
-        }
-
-        return next;
-      });
-
-      previousStreamLabelsRef.current = nextLabels;
+      setStreamOutlierPoints(
+        computeOutlierPoints(
+          nextDataset.values,
+          xValues,
+          lowerFence,
+          upperFence,
+        ),
+      );
     });
 
     setIsStreaming(true);

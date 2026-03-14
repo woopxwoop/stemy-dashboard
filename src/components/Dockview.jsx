@@ -66,6 +66,7 @@ function Dockview() {
       id,
       title,
       component: "echart",
+      params: { linkScope: fileId },
       position: activePanel
         ? { direction: "right", referencePanel: activePanel.id }
         : undefined,

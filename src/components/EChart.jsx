@@ -1,4 +1,10 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, {
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
 import ReactECharts from "echarts-for-react";
 import { parseCsv, getSeriesDataFromRows } from "../utils/csvUtils";
 import generateNormalArray from "../utils/NormallyDistributedArray";
@@ -14,7 +20,70 @@ import {
 import ChartSettingsPopover from "./echart/ChartSettingsPopover";
 import useStreamingDataset from "./echart/useStreamingDataset";
 
-function EChart() {
+const DAY_HOVER_EVENT = "atheria:day-hover";
+
+const buildTimeline = (
+  labels,
+  values,
+  timeValues = null,
+  fallbackSamplesPerDay = 8,
+) => {
+  const dayByIndex = labels.map((label, index) => {
+    const match = String(label ?? "").match(/(\d+)/);
+    if (match) return Math.max(1, Number(match[1]));
+    return Math.max(
+      1,
+      Math.ceil((index + 1) / Math.max(1, fallbackSamplesPerDay)),
+    );
+  });
+
+  const dayCounts = new Map();
+  dayByIndex.forEach((day) => {
+    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+  });
+
+  const daySeen = new Map();
+  const dayToDataIndices = new Map();
+  const dayToValues = new Map();
+
+  const lineData = [];
+
+  values.forEach((value, index) => {
+    if (!Number.isFinite(value)) return;
+
+    const day = dayByIndex[index];
+    const seen = (daySeen.get(day) ?? 0) + 1;
+    daySeen.set(day, seen);
+
+    const count = Math.max(1, dayCounts.get(day) ?? 1);
+    const generatedX = day - 1 + (seen - 0.5) / count;
+    const x =
+      Array.isArray(timeValues) && Number.isFinite(timeValues[index])
+        ? timeValues[index]
+        : generatedX;
+
+    const lineDataIndex = lineData.length;
+    lineData.push([x, value]);
+
+    if (!dayToDataIndices.has(day)) dayToDataIndices.set(day, []);
+    dayToDataIndices.get(day).push(lineDataIndex);
+
+    if (!dayToValues.has(day)) dayToValues.set(day, []);
+    dayToValues.get(day).push(value);
+  });
+
+  const maxDay = Math.max(1, ...dayByIndex);
+
+  return {
+    lineData,
+    dayByIndex,
+    dayToDataIndices,
+    dayToValues,
+    maxDay,
+  };
+};
+
+function EChart(props) {
   // Core panel state.
   const initialBounds = getBoundsFromPreset(DEFAULT_STREAM_PRESET);
   const [error, setError] = useState("");
@@ -33,12 +102,123 @@ function EChart() {
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
   // Fallback local series when no dataset is loaded.
-  const [normalArray] = useState(generateNormalArray(10, 37, 0.3));
+  const mockDataset = useMemo(() => {
+    const labels = [];
+    const times = [];
+
+    DEFAULT_X_LABELS.forEach((_, index) => {
+      const day = index + 1;
+      const samplesForDay = 1 + Math.floor(Math.random() * 3);
+
+      for (let sampleIndex = 0; sampleIndex < samplesForDay; sampleIndex += 1) {
+        labels.push(`Day ${day}`);
+        times.push(day - 1 + (sampleIndex + 0.5) / samplesForDay);
+      }
+    });
+
+    const values = generateNormalArray(labels.length, 37, 0.3);
+
+    return {
+      labels,
+      values,
+      times,
+    };
+  }, []);
 
   // DOM refs.
   const chartRef = useRef(null);
   const wrapperRef = useRef(null);
   const settingsRef = useRef(null);
+  const chartIdRef = useRef(`chart_${Math.random().toString(36).slice(2)}`);
+  const linkScopeRef = useRef(props?.params?.linkScope ?? "global");
+  const dayToDataIndicesRef = useRef(new Map());
+  const suppressBroadcastRef = useRef(false);
+  const [chartInstance, setChartInstance] = useState(null);
+
+  const onChartReady = useCallback((instance) => {
+    setChartInstance(instance);
+  }, []);
+
+  useEffect(() => {
+    if (!chartInstance) return;
+
+    const onAxisPointerUpdate = (event) => {
+      if (suppressBroadcastRef.current) return;
+
+      const axisValue = event?.axesInfo?.[0]?.value;
+      if (!Number.isFinite(axisValue)) return;
+
+      const day = Math.max(1, Math.floor(axisValue) + 1);
+      window.dispatchEvent(
+        new CustomEvent(DAY_HOVER_EVENT, {
+          detail: {
+            source: chartIdRef.current,
+            day,
+            scope: linkScopeRef.current,
+          },
+        }),
+      );
+    };
+
+    const onGlobalOut = () => {
+      window.dispatchEvent(
+        new CustomEvent(DAY_HOVER_EVENT, {
+          detail: {
+            source: chartIdRef.current,
+            day: null,
+            scope: linkScopeRef.current,
+          },
+        }),
+      );
+    };
+
+    const onDayHover = (event) => {
+      const { source, day, scope } = event.detail ?? {};
+      if (source === chartIdRef.current) return;
+      if (scope !== linkScopeRef.current) return;
+
+      if (!Number.isFinite(day)) {
+        suppressBroadcastRef.current = true;
+        chartInstance.dispatchAction({ type: "hideTip" });
+        setTimeout(() => {
+          suppressBroadcastRef.current = false;
+        }, 0);
+        return;
+      }
+
+      const dataIndices = dayToDataIndicesRef.current.get(day) ?? [];
+      const dataIndex = dataIndices[0];
+
+      if (!Number.isInteger(dataIndex)) {
+        suppressBroadcastRef.current = true;
+        chartInstance.dispatchAction({ type: "hideTip" });
+        setTimeout(() => {
+          suppressBroadcastRef.current = false;
+        }, 0);
+        return;
+      }
+
+      suppressBroadcastRef.current = true;
+      chartInstance.dispatchAction({
+        type: "showTip",
+        seriesIndex: 0,
+        dataIndex,
+      });
+      setTimeout(() => {
+        suppressBroadcastRef.current = false;
+      }, 0);
+    };
+
+    chartInstance.on("updateAxisPointer", onAxisPointerUpdate);
+    chartInstance.on("globalout", onGlobalOut);
+    window.addEventListener(DAY_HOVER_EVENT, onDayHover);
+
+    return () => {
+      chartInstance.off("updateAxisPointer", onAxisPointerUpdate);
+      chartInstance.off("globalout", onGlobalOut);
+      window.removeEventListener(DAY_HOVER_EVENT, onDayHover);
+    };
+  }, [chartInstance]);
 
   // Close settings popup on outside click / Escape key.
   useEffect(() => {
@@ -88,7 +268,7 @@ function EChart() {
         const { width, height } = entry.contentRect;
         setChartSize({ width, height });
         // Also tell ECharts instance directly
-        chartRef.current?.getEchartsInstance?.().resize({ width, height });
+        chartInstance?.resize({ width, height });
       });
     });
 
@@ -98,12 +278,20 @@ function EChart() {
       cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, []);
+  }, [chartInstance]);
 
   // Build chart option object from current data + bounds state.
   const option = useMemo(() => {
-    const values = dataset?.values ?? normalArray;
-    const xLabels = dataset?.labels ?? DEFAULT_X_LABELS;
+    const values = dataset?.values ?? mockDataset.values;
+    const xLabels = dataset?.labels ?? mockDataset.labels;
+    const timeline = buildTimeline(
+      xLabels,
+      values,
+      dataset?.times ?? mockDataset.times,
+      dataset?.samplesPerDay ?? 8,
+    );
+    const dayValueMap = timeline.dayToValues;
+    dayToDataIndicesRef.current = timeline.dayToDataIndices;
 
     const manualLower = parseManualNumber(manualBounds.lower);
     const manualUpper = parseManualNumber(manualBounds.upper);
@@ -112,32 +300,29 @@ function EChart() {
 
     let lowerFence = manualLower ?? DEFAULT_BOUNDS.lower;
     let upperFence = manualUpper ?? DEFAULT_BOUNDS.upper;
-    let median = null;
     let outlierPoints = streamOutlierPoints;
 
     if (useStreamingFastPath) {
-      median = (lowerFence + upperFence) / 2;
       outlierPoints = streamOutlierPoints;
     } else {
       const sorted = [...values].sort((a, b) => a - b);
-      const n = sorted.length;
-      const q1 = sorted[Math.floor(n * 0.25)] ?? DEFAULT_BOUNDS.lower;
-      const q3 = sorted[Math.floor(n * 0.75)] ?? DEFAULT_BOUNDS.upper;
+      const q1 =
+        sorted[Math.floor(sorted.length * 0.25)] ?? DEFAULT_BOUNDS.lower;
+      const q3 =
+        sorted[Math.floor(sorted.length * 0.75)] ?? DEFAULT_BOUNDS.upper;
       const iqr = q3 - q1;
-      median =
-        n % 2 === 0
-          ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
-          : sorted[Math.floor(n / 2)];
 
       lowerFence = manualLower ?? q1 - 1.5 * iqr;
       upperFence = manualUpper ?? q3 + 1.5 * iqr;
       outlierPoints = computeOutlierPoints(
         values,
-        xLabels,
+        timeline.lineData.map(([x]) => x),
         lowerFence,
         upperFence,
       );
     }
+
+    const dayLabelStep = Math.max(1, Math.ceil(timeline.maxDay / 8));
 
     return {
       grid: {
@@ -147,10 +332,58 @@ function EChart() {
         bottom: 28,
         containLabel: true,
       },
-      tooltip: { trigger: "axis" },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params) => {
+          const hoveredX = Number(params?.[0]?.axisValue);
+          const hoveredDay = Number.isFinite(hoveredX)
+            ? Math.max(1, Math.floor(hoveredX) + 1)
+            : 1;
+          const dayValues = dayValueMap.get(hoveredDay) ?? [];
+
+          if (dayValues.length === 0) {
+            return `Day ${hoveredDay}<br/>No samples`;
+          }
+
+          const min = Math.min(...dayValues);
+          const max = Math.max(...dayValues);
+          const total = dayValues.reduce((sum, value) => sum + value, 0);
+          const avg = total / dayValues.length;
+          const formattedValues = dayValues
+            .map((value) => value.toFixed(2))
+            .join(", ");
+
+          return [
+            `<strong>Day ${hoveredDay}</strong>`,
+            `Samples: ${dayValues.length}`,
+            `Min/Max: ${min.toFixed(2)} / ${max.toFixed(2)}`,
+            `Avg: ${avg.toFixed(2)}`,
+            `Values: ${formattedValues}`,
+          ].join("<br/>");
+        },
+      },
       xAxis: {
-        type: "category",
-        data: xLabels,
+        type: "value",
+        min: 0,
+        max: Math.max(0.999, timeline.maxDay - 0.000001),
+        splitNumber: 8,
+        minInterval: 1,
+        axisLabel: {
+          hideOverlap: true,
+          formatter: (value) => {
+            if (!Number.isFinite(value)) return "";
+            const isBoundary = Math.abs(value - Math.round(value)) < 0.001;
+            if (!isBoundary) return "";
+
+            const day = Math.round(value) + 1;
+            if ((day - 1) % dayLabelStep !== 0 && day !== timeline.maxDay) {
+              return "";
+            }
+
+            return `Day ${day}`;
+          },
+        },
       },
       yAxis: {
         type: "value",
@@ -162,29 +395,19 @@ function EChart() {
           type: "line",
           smooth: true,
           showSymbol: false,
-          data: values,
+          data: timeline.lineData,
           markLine: {
             data: [
-              ...(Number.isFinite(median)
-                ? [
-                    {
-                      yAxis: median,
-                      name: "Median",
-                      label: { formatter: "Median" },
-                      lineStyle: { color: "#5470c6" },
-                    },
-                  ]
-                : []),
               {
                 yAxis: upperFence,
                 name: "Upper fence",
-                label: { formatter: "Q3 + 1.5 IQR" },
+                label: { formatter: "Upper" },
                 lineStyle: { color: "#faad14", type: "dashed" },
               },
               {
                 yAxis: lowerFence,
                 name: "Lower fence",
-                label: { formatter: "Q1 - 1.5 IQR" },
+                label: { formatter: "Lower" },
                 lineStyle: { color: "#faad14", type: "dashed" },
               },
             ],
@@ -197,17 +420,57 @@ function EChart() {
         },
         {
           type: "scatter",
+          name: "Samples",
+          data: timeline.lineData,
+          symbolSize: 5,
+          itemStyle: { color: "#5470c6", opacity: 0.75 },
+          z: 4,
+          tooltip: {
+            trigger: "item",
+            formatter: (param) => {
+              const x = Number(param?.value?.[0]);
+              const y = Number(param?.value?.[1]);
+              const day = Number.isFinite(x)
+                ? Math.max(1, Math.floor(x) + 1)
+                : 1;
+
+              return [
+                `<strong>Sample point</strong>`,
+                `Day: ${day}`,
+                `Time: ${Number.isFinite(x) ? x.toFixed(3) : "-"}`,
+                `Value: ${Number.isFinite(y) ? y.toFixed(2) : "-"}`,
+              ].join("<br/>");
+            },
+          },
+        },
+        {
+          type: "scatter",
+          name: "Outliers",
           data: outlierPoints,
           symbolSize: 10,
           itemStyle: { color: "#ff4d4f" },
           z: 5,
           tooltip: {
-            valueFormatter: (value) => `${value}`,
+            trigger: "item",
+            formatter: (param) => {
+              const x = Number(param?.value?.[0]);
+              const y = Number(param?.value?.[1]);
+              const day = Number.isFinite(x)
+                ? Math.max(1, Math.floor(x) + 1)
+                : 1;
+
+              return [
+                `<strong>Outlier point</strong>`,
+                `Day: ${day}`,
+                `Time: ${Number.isFinite(x) ? x.toFixed(3) : "-"}`,
+                `Value: ${Number.isFinite(y) ? y.toFixed(2) : "-"}`,
+              ].join("<br/>");
+            },
           },
         },
       ],
     };
-  }, [dataset, isStreaming, manualBounds, normalArray, streamOutlierPoints]);
+  }, [dataset, isStreaming, manualBounds, mockDataset, streamOutlierPoints]);
 
   // Handle file import (CSV/XLSX) and update chart dataset.
   const onFileChange = async (event) => {
@@ -300,6 +563,7 @@ function EChart() {
       >
         <ReactECharts
           ref={chartRef}
+          onChartReady={onChartReady}
           option={option}
           lazyUpdate={true}
           style={{

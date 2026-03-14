@@ -9,16 +9,16 @@ export const DEFAULT_BOUNDS = {
 };
 
 export const DEFAULT_X_LABELS = [
-  "1h",
-  "2h",
-  "3h",
-  "4h",
-  "5h",
-  "6h",
-  "7h",
-  "8h",
-  "9h",
-  "10h",
+  "Day 1",
+  "Day 2",
+  "Day 3",
+  "Day 4",
+  "Day 5",
+  "Day 6",
+  "Day 7",
+  "Day 8",
+  "Day 9",
+  "Day 10",
 ];
 
 // Resolve UI bounds from preset "expected" thresholds first, then hard limits.
