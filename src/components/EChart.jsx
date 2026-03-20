@@ -1,97 +1,53 @@
-import React, {
-  useMemo,
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-} from "react";
+import React, { useMemo, useState, useRef, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
-import { parseCsv, getSeriesDataFromRows } from "../utils/csvUtils";
 import generateNormalArray from "../utils/NormallyDistributedArray";
-import * as XLSX from "xlsx";
 import { DEFAULT_STREAM_PRESET } from "../utils/simulateStream";
 import {
   DEFAULT_BOUNDS,
   DEFAULT_X_LABELS,
+  buildTimeline,
   getBoundsFromPreset,
   parseManualNumber,
   computeOutlierPoints,
 } from "./echart/chartHelpers";
 import ChartSettingsPopover from "./echart/ChartSettingsPopover";
 import useStreamingDataset from "./echart/useStreamingDataset";
+import { useDayHoverSync } from "../hooks/useDayHoverSync";
+import { useChartResize } from "../hooks/useChartResize";
+import { useFileImport } from "../hooks/useFileImport";
 
-const DAY_HOVER_EVENT = "atheria:day-hover";
+// ── Static fallback dataset (no file loaded, no stream active) ───────────────
 
-const buildTimeline = (
-  labels,
-  values,
-  timeValues = null,
-  fallbackSamplesPerDay = 8,
-) => {
-  const dayByIndex = labels.map((label, index) => {
-    const match = String(label ?? "").match(/(\d+)/);
-    if (match) return Math.max(1, Number(match[1]));
-    return Math.max(
-      1,
-      Math.ceil((index + 1) / Math.max(1, fallbackSamplesPerDay)),
-    );
+function buildMockDataset() {
+  const labels = [];
+  const times = [];
+
+  DEFAULT_X_LABELS.forEach((_, index) => {
+    const day = index + 1;
+    const samplesForDay = 1 + Math.floor(Math.random() * 3);
+
+    for (let s = 0; s < samplesForDay; s++) {
+      labels.push(`Day ${day}`);
+      times.push(day - 1 + (s + 0.5) / samplesForDay);
+    }
   });
 
-  const dayCounts = new Map();
-  dayByIndex.forEach((day) => {
-    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
-  });
+  return { labels, times, values: generateNormalArray(labels.length, 37, 0.3) };
+}
 
-  const daySeen = new Map();
-  const dayToDataIndices = new Map();
-  const dayToValues = new Map();
-
-  const lineData = [];
-
-  values.forEach((value, index) => {
-    if (!Number.isFinite(value)) return;
-
-    const day = dayByIndex[index];
-    const seen = (daySeen.get(day) ?? 0) + 1;
-    daySeen.set(day, seen);
-
-    const count = Math.max(1, dayCounts.get(day) ?? 1);
-    const generatedX = day - 1 + (seen - 0.5) / count;
-    const x =
-      Array.isArray(timeValues) && Number.isFinite(timeValues[index])
-        ? timeValues[index]
-        : generatedX;
-
-    const lineDataIndex = lineData.length;
-    lineData.push([x, value]);
-
-    if (!dayToDataIndices.has(day)) dayToDataIndices.set(day, []);
-    dayToDataIndices.get(day).push(lineDataIndex);
-
-    if (!dayToValues.has(day)) dayToValues.set(day, []);
-    dayToValues.get(day).push(value);
-  });
-
-  const maxDay = Math.max(1, ...dayByIndex);
-
-  return {
-    lineData,
-    dayByIndex,
-    dayToDataIndices,
-    dayToValues,
-    maxDay,
-  };
-};
+// ── EChart panel ─────────────────────────────────────────────────────────────
 
 function EChart(props) {
-  // Core panel state.
+  const linkScope = props?.params?.linkScope ?? "global";
+
+  // Core state.
   const initialBounds = getBoundsFromPreset(DEFAULT_STREAM_PRESET);
   const [error, setError] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
-  const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [streamPresetKey, setStreamPresetKey] = useState(DEFAULT_STREAM_PRESET);
   const [manualBounds, setManualBounds] = useState(initialBounds);
+
   const {
     dataset,
     isStreaming,
@@ -101,211 +57,89 @@ function EChart(props) {
     stopStream,
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
-  // Fallback local series when no dataset is loaded.
-  const mockDataset = useMemo(() => {
-    const labels = [];
-    const times = [];
+  // Stable mock data — recreated only on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mockDataset = useMemo(() => buildMockDataset(), []);
 
-    DEFAULT_X_LABELS.forEach((_, index) => {
-      const day = index + 1;
-      const samplesForDay = 1 + Math.floor(Math.random() * 3);
-
-      for (let sampleIndex = 0; sampleIndex < samplesForDay; sampleIndex += 1) {
-        labels.push(`Day ${day}`);
-        times.push(day - 1 + (sampleIndex + 0.5) / samplesForDay);
-      }
-    });
-
-    const values = generateNormalArray(labels.length, 37, 0.3);
-
-    return {
-      labels,
-      values,
-      times,
-    };
-  }, []);
-
-  // DOM refs.
-  const chartRef = useRef(null);
+  // DOM / instance refs.
   const wrapperRef = useRef(null);
   const settingsRef = useRef(null);
-  const chartIdRef = useRef(`chart_${Math.random().toString(36).slice(2)}`);
-  const linkScopeRef = useRef(props?.params?.linkScope ?? "global");
   const dayToDataIndicesRef = useRef(new Map());
-  const suppressBroadcastRef = useRef(false);
   const [chartInstance, setChartInstance] = useState(null);
+  const onChartReady = useCallback(
+    (instance) => setChartInstance(instance),
+    [],
+  );
 
-  const onChartReady = useCallback((instance) => {
-    setChartInstance(instance);
-  }, []);
+  // ── Linked hover sync (cross-panel) ─────────────────────────────────────
+  useDayHoverSync({ chartInstance, linkScope, dayToDataIndicesRef });
 
-  useEffect(() => {
-    if (!chartInstance) return;
+  // ── Resize observer ───────────────────────────────────────────────────────
+  const chartSize = useChartResize(wrapperRef, chartInstance);
 
-    const onAxisPointerUpdate = (event) => {
-      if (suppressBroadcastRef.current) return;
+  // ── Settings popover close-on-outside-click / Escape ─────────────────────
+  React.useEffect(() => {
+    if (!isSettingsOpen) return;
 
-      const axisValue = event?.axesInfo?.[0]?.value;
-      if (!Number.isFinite(axisValue)) return;
-
-      const day = Math.max(1, Math.floor(axisValue) + 1);
-      window.dispatchEvent(
-        new CustomEvent(DAY_HOVER_EVENT, {
-          detail: {
-            source: chartIdRef.current,
-            day,
-            scope: linkScopeRef.current,
-          },
-        }),
-      );
+    const onPointerDown = (e) => {
+      if (!settingsRef.current?.contains(e.target)) setIsSettingsOpen(false);
     };
-
-    const onGlobalOut = () => {
-      window.dispatchEvent(
-        new CustomEvent(DAY_HOVER_EVENT, {
-          detail: {
-            source: chartIdRef.current,
-            day: null,
-            scope: linkScopeRef.current,
-          },
-        }),
-      );
-    };
-
-    const onDayHover = (event) => {
-      const { source, day, scope } = event.detail ?? {};
-      if (source === chartIdRef.current) return;
-      if (scope !== linkScopeRef.current) return;
-
-      if (!Number.isFinite(day)) {
-        suppressBroadcastRef.current = true;
-        chartInstance.dispatchAction({ type: "hideTip" });
-        setTimeout(() => {
-          suppressBroadcastRef.current = false;
-        }, 0);
-        return;
-      }
-
-      const dataIndices = dayToDataIndicesRef.current.get(day) ?? [];
-      const dataIndex = dataIndices[0];
-
-      if (!Number.isInteger(dataIndex)) {
-        suppressBroadcastRef.current = true;
-        chartInstance.dispatchAction({ type: "hideTip" });
-        setTimeout(() => {
-          suppressBroadcastRef.current = false;
-        }, 0);
-        return;
-      }
-
-      suppressBroadcastRef.current = true;
-      chartInstance.dispatchAction({
-        type: "showTip",
-        seriesIndex: 0,
-        dataIndex,
-      });
-      setTimeout(() => {
-        suppressBroadcastRef.current = false;
-      }, 0);
-    };
-
-    chartInstance.on("updateAxisPointer", onAxisPointerUpdate);
-    chartInstance.on("globalout", onGlobalOut);
-    window.addEventListener(DAY_HOVER_EVENT, onDayHover);
-
-    return () => {
-      chartInstance.off("updateAxisPointer", onAxisPointerUpdate);
-      chartInstance.off("globalout", onGlobalOut);
-      window.removeEventListener(DAY_HOVER_EVENT, onDayHover);
-    };
-  }, [chartInstance]);
-
-  // Close settings popup on outside click / Escape key.
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (!isSettingsOpen) return;
-      if (settingsRef.current?.contains(event.target)) return;
-      setIsSettingsOpen(false);
-    };
-
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setIsSettingsOpen(false);
-      }
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setIsSettingsOpen(false);
     };
 
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [isSettingsOpen]);
 
-  // Start stream via hook and update panel metadata.
-  const handleStartStream = () => {
-    const selectedPreset = startStream();
+  // ── File import ───────────────────────────────────────────────────────────
+  const { handleFileChange } = useFileImport({
+    onDataset: setDatasetWithOutliers,
+    onError: setError,
+    onFileName: setSelectedFileName,
+    onStreamStop: stopStream,
+  });
+
+  // ── Stream controls ───────────────────────────────────────────────────────
+  const handleStartStream = useCallback(() => {
+    const preset = startStream();
     setError("");
-    setSelectedFileName(`Simulated ${selectedPreset.label} stream`);
-  };
+    setSelectedFileName(`Simulated ${preset.label} stream`);
+  }, [startStream]);
 
-  // Selecting a preset also applies its expected UI bounds.
-  const onStreamPresetChange = (nextPresetKey) => {
-    setStreamPresetKey(nextPresetKey);
-    setManualBounds(getBoundsFromPreset(nextPresetKey));
-  };
+  const onStreamPresetChange = useCallback((nextKey) => {
+    setStreamPresetKey(nextKey);
+    setManualBounds(getBoundsFromPreset(nextKey));
+  }, []);
 
-  // Keep chart canvas synced with panel resize.
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-
-    let frameId = 0;
-    const observer = new ResizeObserver(([entry]) => {
-      cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(() => {
-        const { width, height } = entry.contentRect;
-        setChartSize({ width, height });
-        // Also tell ECharts instance directly
-        chartInstance?.resize({ width, height });
-      });
-    });
-
-    observer.observe(wrapper);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [chartInstance]);
-
-  // Build chart option object from current data + bounds state.
+  // ── Chart option ──────────────────────────────────────────────────────────
   const option = useMemo(() => {
-    const values = dataset?.values ?? mockDataset.values;
-    const xLabels = dataset?.labels ?? mockDataset.labels;
+    const activeDataset = dataset ?? mockDataset;
     const timeline = buildTimeline(
-      xLabels,
-      values,
-      dataset?.times ?? mockDataset.times,
-      dataset?.samplesPerDay ?? 8,
+      activeDataset.labels,
+      activeDataset.values,
+      activeDataset.times,
+      activeDataset.samplesPerDay ?? 8,
     );
-    const dayValueMap = timeline.dayToValues;
+
     dayToDataIndicesRef.current = timeline.dayToDataIndices;
 
     const manualLower = parseManualNumber(manualBounds.lower);
     const manualUpper = parseManualNumber(manualBounds.upper);
-    const useStreamingFastPath =
-      isStreaming && manualLower !== null && manualUpper !== null;
 
-    let lowerFence = manualLower ?? DEFAULT_BOUNDS.lower;
-    let upperFence = manualUpper ?? DEFAULT_BOUNDS.upper;
-    let outlierPoints = streamOutlierPoints;
+    let lowerFence, upperFence, outlierPoints;
 
-    if (useStreamingFastPath) {
+    if (isStreaming && manualLower !== null && manualUpper !== null) {
+      // Fast path: streaming with explicit bounds — skip IQR calculation.
+      lowerFence = manualLower;
+      upperFence = manualUpper;
       outlierPoints = streamOutlierPoints;
     } else {
-      const sorted = [...values].sort((a, b) => a - b);
+      const sorted = [...activeDataset.values].sort((a, b) => a - b);
       const q1 =
         sorted[Math.floor(sorted.length * 0.25)] ?? DEFAULT_BOUNDS.lower;
       const q3 =
@@ -315,7 +149,7 @@ function EChart(props) {
       lowerFence = manualLower ?? q1 - 1.5 * iqr;
       upperFence = manualUpper ?? q3 + 1.5 * iqr;
       outlierPoints = computeOutlierPoints(
-        values,
+        activeDataset.values,
         timeline.lineData.map(([x]) => x),
         lowerFence,
         upperFence,
@@ -325,41 +159,29 @@ function EChart(props) {
     const dayLabelStep = Math.max(1, Math.ceil(timeline.maxDay / 8));
 
     return {
-      grid: {
-        left: 36,
-        right: 14,
-        top: 16,
-        bottom: 28,
-        containLabel: true,
-      },
+      grid: { left: 36, right: 14, top: 16, bottom: 28, containLabel: true },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: (params) => {
-          const hoveredX = Number(params?.[0]?.axisValue);
-          const hoveredDay = Number.isFinite(hoveredX)
-            ? Math.max(1, Math.floor(hoveredX) + 1)
-            : 1;
-          const dayValues = dayValueMap.get(hoveredDay) ?? [];
+          const hoveredDay = Math.max(
+            1,
+            Math.floor(Number(params?.[0]?.axisValue)) + 1,
+          );
+          const dayValues = timeline.dayToValues.get(hoveredDay) ?? [];
 
-          if (dayValues.length === 0) {
-            return `Day ${hoveredDay}<br/>No samples`;
-          }
+          if (dayValues.length === 0) return `Day ${hoveredDay}<br/>No samples`;
 
           const min = Math.min(...dayValues);
           const max = Math.max(...dayValues);
-          const total = dayValues.reduce((sum, value) => sum + value, 0);
-          const avg = total / dayValues.length;
-          const formattedValues = dayValues
-            .map((value) => value.toFixed(2))
-            .join(", ");
+          const avg = dayValues.reduce((s, v) => s + v, 0) / dayValues.length;
 
           return [
             `<strong>Day ${hoveredDay}</strong>`,
             `Samples: ${dayValues.length}`,
             `Min/Max: ${min.toFixed(2)} / ${max.toFixed(2)}`,
             `Avg: ${avg.toFixed(2)}`,
-            `Values: ${formattedValues}`,
+            `Values: ${dayValues.map((v) => v.toFixed(2)).join(", ")}`,
           ].join("<br/>");
         },
       },
@@ -373,23 +195,15 @@ function EChart(props) {
           hideOverlap: true,
           formatter: (value) => {
             if (!Number.isFinite(value)) return "";
-            const isBoundary = Math.abs(value - Math.round(value)) < 0.001;
-            if (!isBoundary) return "";
-
+            if (Math.abs(value - Math.round(value)) >= 0.001) return "";
             const day = Math.round(value) + 1;
-            if ((day - 1) % dayLabelStep !== 0 && day !== timeline.maxDay) {
+            if ((day - 1) % dayLabelStep !== 0 && day !== timeline.maxDay)
               return "";
-            }
-
             return `Day ${day}`;
           },
         },
       },
-      yAxis: {
-        type: "value",
-        scale: true,
-        boundaryGap: ["8%", "8%"],
-      },
+      yAxis: { type: "value", scale: true, boundaryGap: ["8%", "8%"] },
       series: [
         {
           type: "line",
@@ -433,7 +247,6 @@ function EChart(props) {
               const day = Number.isFinite(x)
                 ? Math.max(1, Math.floor(x) + 1)
                 : 1;
-
               return [
                 `<strong>Sample point</strong>`,
                 `Day: ${day}`,
@@ -458,7 +271,6 @@ function EChart(props) {
               const day = Number.isFinite(x)
                 ? Math.max(1, Math.floor(x) + 1)
                 : 1;
-
               return [
                 `<strong>Outlier point</strong>`,
                 `Day: ${day}`,
@@ -472,49 +284,7 @@ function EChart(props) {
     };
   }, [dataset, isStreaming, manualBounds, mockDataset, streamOutlierPoints]);
 
-  // Handle file import (CSV/XLSX) and update chart dataset.
-  const onFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setError("");
-    setSelectedFileName(file.name);
-    stopStream();
-
-    try {
-      const extension = file.name.split(".").pop()?.toLowerCase();
-      let rows = [];
-
-      if (extension === "csv") {
-        const text = await file.text();
-        rows = parseCsv(text);
-      } else if (extension === "xlsx" || extension === "xls") {
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) {
-          throw new Error("Workbook has no sheets");
-        }
-        const sheet = workbook.Sheets[firstSheetName];
-        rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
-      } else {
-        throw new Error("Unsupported file type. Use CSV or XLSX.");
-      }
-
-      const nextDataset = getSeriesDataFromRows(rows);
-      if (!nextDataset) {
-        throw new Error(
-          "Could not parse chart data. Use 2 columns: label,value.",
-        );
-      }
-
-      setDatasetWithOutliers(nextDataset);
-    } catch (readError) {
-      setError(
-        readError instanceof Error ? readError.message : "Failed to parse file",
-      );
-    }
-  };
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="chart-panel-shell">
@@ -538,7 +308,7 @@ function EChart(props) {
           settingsRef={settingsRef}
           selectedFileName={selectedFileName}
           onClose={() => setIsSettingsOpen(false)}
-          onFileChange={onFileChange}
+          onFileChange={handleFileChange}
           manualBounds={manualBounds}
           onManualBoundsChange={setManualBounds}
           onResetBounds={() =>
@@ -562,7 +332,6 @@ function EChart(props) {
         style={{ width: "100%", height: "100%", overflow: "hidden" }}
       >
         <ReactECharts
-          ref={chartRef}
           onChartReady={onChartReady}
           option={option}
           lazyUpdate={true}

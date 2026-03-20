@@ -1,8 +1,9 @@
 import { DockviewReact } from "dockview-react";
 import "dockview/dist/styles/dockview.css";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useRef } from "react";
 import EChart from "./EChart";
 import RunExplorer from "./RunExplorer";
+import { useRunManager } from "../hooks/useRunManager";
 
 const Default = (props) => (
   <div style={{ padding: 8 }}>{props.api.title ?? "Untitled panel"}</div>
@@ -11,52 +12,28 @@ const Default = (props) => (
 const components = { default: Default, echart: EChart };
 
 let panelCounter = 0;
-let folderCounter = 0;
-let fileCounter = 0;
+
+// ── Dockview ─────────────────────────────────────────────────────────────────
 
 function Dockview() {
-  const dockviewApis = useRef({}); // fileId → dockview api
-  const wrapperRefs = useRef({}); // fileId → wrapper DOM element
-  const readyHandlers = useRef({}); // fileId → stable onReady callback
+  /**
+   * Single map for all per-file dockview state.
+   * Shape: Record<fileId, { api?: DockviewApi, onReady?: Function, el?: HTMLElement }>
+   *
+   * Previously three separate ref maps (dockviewApis, wrapperRefs, readyHandlers).
+   */
+  const fileInstances = useRef({});
 
-  const initialFolderId = useMemo(() => `folder_${++folderCounter}`, []);
-  const initialFileId = useMemo(() => `file_${++fileCounter}`, []);
-
-  const [folders, setFolders] = useState([
-    { id: initialFolderId, name: "Run group 1" },
-  ]);
-
-  // Each file IS a dockview. panels[] tracks what's inside it.
-  const [files, setFiles] = useState([
-    { id: initialFileId, name: "Run 1", folderId: initialFolderId, panels: [] },
-  ]);
-
-  const [activeFileId, setActiveFileId] = useState(initialFileId);
-
-  // ── Tree data ──────────────────────────────────────────────────────────────
-
-  const treeData = useMemo(
-    () =>
-      folders.map((folder) => ({
-        id: folder.id,
-        name: folder.name,
-        nodeType: "directory",
-        children: files
-          .filter((f) => f.folderId === folder.id)
-          .map((file) => ({
-            id: file.id,
-            name: file.name,
-            nodeType: "file",
-          })),
-      })),
-    [folders, files],
-  );
+  const getInstance = (fileId) => {
+    fileInstances.current[fileId] ??= {};
+    return fileInstances.current[fileId];
+  };
 
   // ── Panel helpers ──────────────────────────────────────────────────────────
 
   const addPanelToFile = useCallback((fileId) => {
-    const api = dockviewApis.current[fileId];
-    if (!api) return;
+    const { api } = getInstance(fileId);
+    if (!api) return null;
 
     const id = `panel_${++panelCounter}`;
     const title = `Graph ${panelCounter}`;
@@ -78,137 +55,85 @@ function Dockview() {
       );
     });
 
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.id === fileId
-          ? { ...f, panels: [...f.panels, { id, name: title }] }
-          : f,
-      ),
-    );
+    return { id, title };
   }, []);
 
-  // ── Dockview ready (one per file) ──────────────────────────────────────────
+  // ── Run manager ────────────────────────────────────────────────────────────
+
+  const revealFile = useCallback((fileId) => {
+    requestAnimationFrame(() => {
+      const { api } = getInstance(fileId);
+      if (api) api.layout(api.width, api.height);
+    });
+  }, []);
+
+  const handleFilesWillDelete = useCallback((filesToDelete) => {
+    filesToDelete.forEach(({ id: fileId, panels }) => {
+      const { api } = getInstance(fileId);
+      panels.forEach(({ id: panelId }) => {
+        try {
+          api?.getPanel(panelId)?.api.close();
+        } catch (e) {
+          console.debug("Panel already closed:", e);
+        }
+      });
+      delete fileInstances.current[fileId];
+    });
+  }, []);
+
+  const {
+    files,
+    activeFileId,
+    treeData,
+    handleFileSelect,
+    handleAddDirectory,
+    handleAddFile,
+    handleRename,
+    handleDelete,
+    handleMove,
+    registerPanel,
+  } = useRunManager({
+    onRevealFile: revealFile,
+    onFilesWillDelete: handleFilesWillDelete,
+  });
+
+  // ── Dockview ready (one stable callback per file) ──────────────────────────
 
   const getReadyHandler = useCallback(
     (fileId) => {
-      if (!readyHandlers.current[fileId]) {
-        readyHandlers.current[fileId] = (event) => {
-          dockviewApis.current[fileId] = event.api;
+      const instance = getInstance(fileId);
 
-          const wrapper = wrapperRefs.current[fileId];
-          const inner = wrapper?.querySelector("[class*='dockview-theme-']");
+      if (!instance.onReady) {
+        instance.onReady = (event) => {
+          instance.api = event.api;
+
+          // Enforce light theme on the inner dockview element.
+          const inner = instance.el?.querySelector(
+            "[class*='dockview-theme-']",
+          );
           if (inner) {
             inner.className =
               inner.className.replace(/dockview-theme-\S+/g, "").trim() +
               " dockview-theme-light";
           }
 
-          addPanelToFile(fileId);
+          const panel = addPanelToFile(fileId);
+          if (panel) registerPanel(fileId, panel.id, panel.title);
         };
       }
-      return readyHandlers.current[fileId];
+
+      return instance.onReady;
     },
-    [addPanelToFile],
+    [addPanelToFile, registerPanel],
   );
-
-  const revealFile = useCallback((fileId) => {
-    setActiveFileId(fileId);
-    requestAnimationFrame(() => {
-      const api = dockviewApis.current[fileId];
-      if (api) api.layout(api.width, api.height);
-    });
-  }, []);
-
-  // ── RunExplorer callbacks ──────────────────────────────────────────────────
-
-  const handleFileSelect = useCallback(
-    ({ fileId }) => revealFile(fileId),
-    [revealFile],
-  );
-
-  // Add a top-level folder
-  const handleAddDirectory = useCallback(() => {
-    const id = `folder_${++folderCounter}`;
-    setFolders((prev) => [...prev, { id, name: `Run group ${folderCounter}` }]);
-  }, []);
-
-  // Add a new file/dockview into the selected or first folder
-  const handleAddFile = useCallback(
-    (selectedNodeInfo) => {
-      const targetFolderId =
-        selectedNodeInfo?.nodeType === "directory"
-          ? selectedNodeInfo.id
-          : (selectedNodeInfo?.parentId ?? folders[0]?.id ?? null);
-
-      if (!targetFolderId) return;
-
-      const id = `file_${++fileCounter}`;
-      const name = `Run ${fileCounter}`;
-      setFiles((prev) => [
-        ...prev,
-        { id, name, folderId: targetFolderId, panels: [] },
-      ]);
-      revealFile(id);
-    },
-    [folders, revealFile],
-  );
-
-  const handleRename = useCallback(({ id, name }) => {
-    // Could be a folder or a file
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
-    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
-  }, []);
-
-  const handleDelete = useCallback(
-    ({ ids }) => {
-      // Delete folders → also delete their files and dockviews
-      const folderIds = ids.filter((id) => folders.some((f) => f.id === id));
-      const fileIds = [
-        ...ids.filter((id) => files.some((f) => f.id === id)),
-        ...files.filter((f) => folderIds.includes(f.folderId)).map((f) => f.id),
-      ];
-
-      fileIds.forEach((fileId) => {
-        files
-          .find((f) => f.id === fileId)
-          ?.panels.forEach((p) => {
-            try {
-              dockviewApis.current[fileId]?.getPanel(p.id)?.api.close();
-            } catch (e) {
-              console.debug("Panel already closed:", e);
-            }
-          });
-        delete dockviewApis.current[fileId];
-        delete readyHandlers.current[fileId];
-        delete wrapperRefs.current[fileId];
-      });
-
-      setFolders((prev) => prev.filter((f) => !folderIds.includes(f.id)));
-      setFiles((prev) => prev.filter((f) => !fileIds.includes(f.id)));
-
-      if (ids.includes(activeFileId)) {
-        const remaining = files.filter((f) => !fileIds.includes(f.id));
-        setActiveFileId(remaining[0]?.id ?? null);
-      }
-    },
-    [folders, files, activeFileId],
-  );
-
-  // Dragging a file to a folder reassigns its folderId
-  const handleMove = useCallback(({ dragIds, parentId }) => {
-    // Only allow moving files (not folders) into a folder
-    setFiles((prev) =>
-      prev.map((f) =>
-        dragIds.includes(f.id) && parentId ? { ...f, folderId: parentId } : f,
-      ),
-    );
-  }, []);
 
   // ── Top toolbar ────────────────────────────────────────────────────────────
 
   const addPanel = useCallback(() => {
-    if (activeFileId) addPanelToFile(activeFileId);
-  }, [activeFileId, addPanelToFile]);
+    if (!activeFileId) return;
+    const panel = addPanelToFile(activeFileId);
+    if (panel) registerPanel(activeFileId, panel.id, panel.title);
+  }, [activeFileId, addPanelToFile, registerPanel]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -275,7 +200,7 @@ function Dockview() {
             <div
               key={file.id}
               ref={(el) => {
-                wrapperRefs.current[file.id] = el;
+                getInstance(file.id).el = el;
               }}
               style={{
                 position: "absolute",
