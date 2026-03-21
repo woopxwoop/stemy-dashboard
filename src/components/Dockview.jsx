@@ -1,27 +1,100 @@
 import { DockviewReact } from "dockview-react";
 import "dockview/dist/styles/dockview.css";
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import EChart from "./EChart";
 import RunExplorer from "./RunExplorer";
 import { useRunManager } from "../hooks/useRunManager";
+
+// ── Panel default ──────────────────────────────────────────────────────────────
 
 const Default = (props) => (
   <div style={{ padding: 8 }}>{props.api.title ?? "Untitled panel"}</div>
 );
 
+// ── Renameable tab ─────────────────────────────────────────────────────────────
+//
+// Subscribes to api.onDidTitleChange so the label stays in sync when EChart
+// calls api.setTitle() automatically on file load / stream start.
+// Double-click to rename; Enter or blur to confirm; Escape to cancel.
+
+function RenameableTab({ api }) {
+  const [title, setTitle] = useState(api.title ?? "");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    const disposable = api.onDidTitleChange(() => setTitle(api.title ?? ""));
+    return () => disposable.dispose();
+  }, [api]);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setDraft(title);
+    setEditing(true);
+  };
+
+  const commit = () => {
+    const name = draft.trim();
+    if (name) {
+      api.setTitle(name);
+      setTitle(name);
+    }
+    setEditing(false);
+  };
+
+  const cancel = () => setEditing(false);
+
+  return (
+    <div className="dv-tab-custom" onDoubleClick={startEdit}>
+      {editing ? (
+        <input
+          autoFocus
+          className="dv-tab-rename-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className="dv-tab-title" title={title}>
+          {title || "Untitled"}
+        </span>
+      )}
+      <button
+        className="dv-tab-close"
+        title="Close panel"
+        onClick={(e) => {
+          e.stopPropagation();
+          api.close();
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 const components = { default: Default, echart: EChart };
+const tabComponents = { default: RenameableTab, echart: RenameableTab };
+
+// Dockview tab bar height — button is overlaid at this offset from the top.
+const TAB_BAR_HEIGHT = 38;
 
 let panelCounter = 0;
 
-// ── Dockview ─────────────────────────────────────────────────────────────────
+// ── Dockview ──────────────────────────────────────────────────────────────────
 
 function Dockview() {
-  /**
-   * Single map for all per-file dockview state.
-   * Shape: Record<fileId, { api?: DockviewApi, onReady?: Function, el?: HTMLElement }>
-   *
-   * Previously three separate ref maps (dockviewApis, wrapperRefs, readyHandlers).
-   */
   const fileInstances = useRef({});
 
   const getInstance = (fileId) => {
@@ -43,6 +116,7 @@ function Dockview() {
       id,
       title,
       component: "echart",
+      tabComponent: "echart",
       params: { linkScope: fileId },
       position: activePanel
         ? { direction: "right", referencePanel: activePanel.id }
@@ -97,17 +171,15 @@ function Dockview() {
     onFilesWillDelete: handleFilesWillDelete,
   });
 
-  // ── Dockview ready (one stable callback per file) ──────────────────────────
+  // ── Dockview ready ─────────────────────────────────────────────────────────
 
   const getReadyHandler = useCallback(
     (fileId) => {
       const instance = getInstance(fileId);
-
       if (!instance.onReady) {
         instance.onReady = (event) => {
           instance.api = event.api;
 
-          // Enforce light theme on the inner dockview element.
           const inner = instance.el?.querySelector(
             "[class*='dockview-theme-']",
           );
@@ -121,59 +193,29 @@ function Dockview() {
           if (panel) registerPanel(fileId, panel.id, panel.title);
         };
       }
-
       return instance.onReady;
     },
     [addPanelToFile, registerPanel],
   );
 
-  // ── Top toolbar ────────────────────────────────────────────────────────────
-
-  const addPanel = useCallback(() => {
-    if (!activeFileId) return;
-    const panel = addPanelToFile(activeFileId);
-    if (panel) registerPanel(activeFileId, panel.id, panel.title);
-  }, [activeFileId, addPanelToFile, registerPanel]);
+  const addPanel = useCallback(
+    (fileId) => {
+      const panel = addPanelToFile(fileId);
+      if (panel) registerPanel(fileId, panel.id, panel.title);
+    },
+    [addPanelToFile, registerPanel],
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100vw",
-        display: "grid",
-        gridTemplateRows: "auto 1fr",
-        minHeight: 0,
-        minWidth: 0,
-      }}
-    >
-      <div
-        className="toolbar"
-        style={{ borderBottom: "1px solid rgba(128, 128, 128, 0.35)" }}
-      >
-        <button className="control-button" onClick={addPanel}>
-          Add panel
-        </button>
-      </div>
+    <div className="app-shell">
+      <header className="app-toolbar">
+        <span className="app-toolbar__brand">Atheria</span>
+      </header>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "220px 1fr",
-          minHeight: 0,
-          height: "100%",
-        }}
-      >
-        <aside
-          style={{
-            borderRight: "1px solid rgba(128, 128, 128, 0.35)",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-          }}
-        >
+      <div className="app-workspace">
+        <aside className="app-sidebar">
           <RunExplorer
             treeData={treeData}
             activeFileId={activeFileId}
@@ -186,7 +228,6 @@ function Dockview() {
           />
         </aside>
 
-        {/* All dockviews stacked; only the active file's is visible */}
         <div
           style={{
             position: "relative",
@@ -209,10 +250,21 @@ function Dockview() {
                 pointerEvents: file.id === activeFileId ? "auto" : "none",
               }}
             >
+              {/* "+ New panel" button — overlaid at the right end of the tab bar */}
+              <button
+                className="dv-add-panel-btn"
+                title="Add a new graph panel"
+                onClick={() => addPanel(file.id)}
+              >
+                <span className="dv-add-panel-btn__icon">+</span>
+                New panel
+              </button>
+
               <DockviewReact
                 className="dockview-theme-light"
                 onReady={getReadyHandler(file.id)}
                 components={components}
+                tabComponents={tabComponents}
               />
             </div>
           ))}

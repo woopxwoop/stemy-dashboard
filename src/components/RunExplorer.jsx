@@ -8,11 +8,11 @@ import React, {
 } from "react";
 import { Tree } from "react-arborist";
 
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 32;
 
 const ExplorerCtx = createContext(null);
 
-// ─── Node renderer ────────────────────────────────────────────────────────────
+// ─── Node renderer ─────────────────────────────────────────────────────────────
 
 function Node({ node, style, dragHandle }) {
   const { requestDelete, activeFileId } = useContext(ExplorerCtx);
@@ -24,9 +24,10 @@ function Node({ node, style, dragHandle }) {
       ref={dragHandle}
       style={style}
       className={[
-        "run-explorer-row",
-        node.isSelected ? "run-explorer-row--selected" : "",
-        isActive ? "run-explorer-row--active-file" : "",
+        "rex-row",
+        isDir ? "rex-row--dir" : "rex-row--file",
+        node.isSelected ? "rex-row--selected" : "",
+        isActive ? "rex-row--active" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -40,14 +41,17 @@ function Node({ node, style, dragHandle }) {
         node.edit();
       }}
     >
-      <span className="run-explorer-icon">
-        {isDir ? (node.isOpen ? "▾" : "▸") : "○"}
-      </span>
+      {/* Colored pip for files; caret for directories */}
+      {isDir ? (
+        <span className="rex-icon">{node.isOpen ? "▾" : "▸"}</span>
+      ) : (
+        <span className="rex-file-pip" />
+      )}
 
       {node.isEditing ? (
         <input
           autoFocus
-          className="run-explorer-rename-input"
+          className="rex-rename-input"
           defaultValue={node.data.name}
           onBlur={(e) => node.submit(e.currentTarget.value)}
           onKeyDown={(e) => {
@@ -57,26 +61,41 @@ function Node({ node, style, dragHandle }) {
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="run-explorer-label">{node.data.name}</span>
+        <span className="rex-label">{node.data.name}</span>
       )}
 
-      <button
-        className="run-explorer-delete-btn"
-        type="button"
-        tabIndex={-1}
-        aria-label={`Delete ${node.data.name}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          requestDelete(node.id);
-        }}
-      >
-        ×
-      </button>
+      <div className="rex-actions">
+        <button
+          className="rex-btn rex-btn--rename"
+          type="button"
+          tabIndex={-1}
+          title="Rename (or double-click)"
+          aria-label={`Rename ${node.data.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            node.edit();
+          }}
+        >
+          ✎
+        </button>
+        <button
+          className="rex-btn rex-btn--delete"
+          type="button"
+          tabIndex={-1}
+          aria-label={`Delete ${node.data.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            requestDelete(node.id);
+          }}
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }
 
-// ─── RunExplorer ──────────────────────────────────────────────────────────────
+// ─── RunExplorer ───────────────────────────────────────────────────────────────
 
 function RunExplorer({
   treeData,
@@ -124,19 +143,17 @@ function RunExplorer({
       parentId: node.parent?.data?.id ?? null,
     });
 
-    if (!isDir) {
-      onFileSelect?.({ fileId: node.data.id });
-    }
+    if (!isDir) onFileSelect?.({ fileId: node.data.id });
   };
 
   return (
     <ExplorerCtx.Provider value={ctx}>
-      <div className="run-explorer-shell">
-        <div className="run-explorer-header">
-          <span className="run-explorer-title">Runs</span>
-          <div className="run-explorer-actions">
+      <div className="rex-shell">
+        <div className="rex-header">
+          <span className="rex-title">Runs</span>
+          <div className="rex-header-actions">
             <button
-              className="control-button"
+              className="rex-add-btn"
               type="button"
               title="New run group"
               onClick={() => onAddDirectory?.(selectedNodeInfo)}
@@ -144,7 +161,7 @@ function RunExplorer({
               + Group
             </button>
             <button
-              className="control-button"
+              className="rex-add-btn rex-add-btn--primary"
               type="button"
               title="New run"
               onClick={() => onAddFile?.(selectedNodeInfo)}
@@ -154,7 +171,7 @@ function RunExplorer({
           </div>
         </div>
 
-        <div className="run-explorer-body" ref={wrapperRef}>
+        <div className="rex-body" ref={wrapperRef}>
           {treeHeight > 0 && (
             <Tree
               data={treeData}
@@ -163,7 +180,7 @@ function RunExplorer({
               height={treeHeight}
               openByDefault={true}
               padding={6}
-              indent={16}
+              indent={14}
               onSelect={handleSelect}
               onRename={({ id, name }) => onRename?.({ id, name })}
               onDelete={({ ids }) => onDelete?.({ ids })}

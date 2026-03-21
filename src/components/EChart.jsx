@@ -16,6 +16,10 @@ import { useDayHoverSync } from "../hooks/useDayHoverSync";
 import { useChartResize } from "../hooks/useChartResize";
 import { useFileImport } from "../hooks/useFileImport";
 
+// Strip directory path and extension to get a clean display name.
+const toDisplayName = (filename) =>
+  filename.replace(/\.[^.]+$/, "").replace(/^.*[\\/]/, "");
+
 // ── Static fallback dataset (no file loaded, no stream active) ───────────────
 
 function buildMockDataset() {
@@ -25,7 +29,6 @@ function buildMockDataset() {
   DEFAULT_X_LABELS.forEach((_, index) => {
     const day = index + 1;
     const samplesForDay = 1 + Math.floor(Math.random() * 3);
-
     for (let s = 0; s < samplesForDay; s++) {
       labels.push(`Day ${day}`);
       times.push(day - 1 + (s + 0.5) / samplesForDay);
@@ -38,9 +41,10 @@ function buildMockDataset() {
 // ── EChart panel ─────────────────────────────────────────────────────────────
 
 function EChart(props) {
+  // props.api is the dockview panel API — used to update the tab title.
+  const panelApi = props?.api;
   const linkScope = props?.params?.linkScope ?? "global";
 
-  // Core state.
   const initialBounds = getBoundsFromPreset(DEFAULT_STREAM_PRESET);
   const [error, setError] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
@@ -57,11 +61,9 @@ function EChart(props) {
     stopStream,
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
-  // Stable mock data — recreated only on mount.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const mockDataset = useMemo(() => buildMockDataset(), []);
 
-  // DOM / instance refs.
   const wrapperRef = useRef(null);
   const settingsRef = useRef(null);
   const dayToDataIndicesRef = useRef(new Map());
@@ -71,23 +73,18 @@ function EChart(props) {
     [],
   );
 
-  // ── Linked hover sync (cross-panel) ─────────────────────────────────────
   useDayHoverSync({ chartInstance, linkScope, dayToDataIndicesRef });
-
-  // ── Resize observer ───────────────────────────────────────────────────────
   const chartSize = useChartResize(wrapperRef, chartInstance);
 
   // ── Settings popover close-on-outside-click / Escape ─────────────────────
   React.useEffect(() => {
     if (!isSettingsOpen) return;
-
     const onPointerDown = (e) => {
       if (!settingsRef.current?.contains(e.target)) setIsSettingsOpen(false);
     };
     const onKeyDown = (e) => {
       if (e.key === "Escape") setIsSettingsOpen(false);
     };
-
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -100,7 +97,11 @@ function EChart(props) {
   const { handleFileChange } = useFileImport({
     onDataset: setDatasetWithOutliers,
     onError: setError,
-    onFileName: setSelectedFileName,
+    onFileName: (name) => {
+      setSelectedFileName(name);
+      // Automatically rename the tab to the file name (no extension).
+      panelApi?.setTitle(toDisplayName(name));
+    },
     onStreamStop: stopStream,
   });
 
@@ -108,8 +109,11 @@ function EChart(props) {
   const handleStartStream = useCallback(() => {
     const preset = startStream();
     setError("");
-    setSelectedFileName(`Simulated ${preset.label} stream`);
-  }, [startStream]);
+    const label = preset.label;
+    setSelectedFileName(label);
+    // Automatically rename the tab to the stream preset label.
+    panelApi?.setTitle(label);
+  }, [startStream, panelApi]);
 
   const onStreamPresetChange = useCallback((nextKey) => {
     setStreamPresetKey(nextKey);
@@ -130,11 +134,9 @@ function EChart(props) {
 
     const manualLower = parseManualNumber(manualBounds.lower);
     const manualUpper = parseManualNumber(manualBounds.upper);
-
     let lowerFence, upperFence, outlierPoints;
 
     if (isStreaming && manualLower !== null && manualUpper !== null) {
-      // Fast path: streaming with explicit bounds — skip IQR calculation.
       lowerFence = manualLower;
       upperFence = manualUpper;
       outlierPoints = streamOutlierPoints;
@@ -145,7 +147,6 @@ function EChart(props) {
       const q3 =
         sorted[Math.floor(sorted.length * 0.75)] ?? DEFAULT_BOUNDS.upper;
       const iqr = q3 - q1;
-
       lowerFence = manualLower ?? q1 - 1.5 * iqr;
       upperFence = manualUpper ?? q3 + 1.5 * iqr;
       outlierPoints = computeOutlierPoints(
@@ -169,13 +170,10 @@ function EChart(props) {
             Math.floor(Number(params?.[0]?.axisValue)) + 1,
           );
           const dayValues = timeline.dayToValues.get(hoveredDay) ?? [];
-
           if (dayValues.length === 0) return `Day ${hoveredDay}<br/>No samples`;
-
           const min = Math.min(...dayValues);
           const max = Math.max(...dayValues);
           const avg = dayValues.reduce((s, v) => s + v, 0) / dayValues.length;
-
           return [
             `<strong>Day ${hoveredDay}</strong>`,
             `Samples: ${dayValues.length}`,
@@ -290,7 +288,7 @@ function EChart(props) {
     <div className="chart-panel-shell">
       <div className="chart-panel-topbar">
         <button
-          className="control-button chart-settings-trigger"
+          className="chart-settings-trigger"
           type="button"
           onClick={() => setIsSettingsOpen((prev) => !prev)}
           aria-label="Toggle panel settings"
@@ -298,7 +296,7 @@ function EChart(props) {
         >
           ⚙
         </button>
-        <span className="file-name chart-panel-file-name">
+        <span className="chart-panel-file-name">
           {selectedFileName || "No file loaded"}
         </span>
       </div>

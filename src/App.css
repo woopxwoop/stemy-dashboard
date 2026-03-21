@@ -1,172 +1,474 @@
+/* ─── Design tokens ─────────────────────────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+:root {
+  /* Colors */
+  --c-bg: #f0f4f8;
+  --c-surface: #ffffff;
+  --c-navy: #0f2b5b;
+  --c-navy-mid: #1a3f7a;
+  --c-blue: #1e56e0;
+  --c-blue-light: #dde8ff;
+  --c-red: #e02b2b;
+  --c-red-light: #fde8e8;
+  --c-border: #cdd6e8;
+  --c-border-dark: #9aacc8;
+  --c-text: #0d1b33;
+  --c-text-mid: #3d5278;
+  --c-text-muted: #7a8fad;
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+
+  /* Typography */
+  --font-ui: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(15, 43, 91, 0.1);
+  --shadow-md: 0 4px 16px rgba(15, 43, 91, 0.14);
+  --shadow-lg: 0 8px 32px rgba(15, 43, 91, 0.18);
+}
+
+/* ─── Global reset ───────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--c-text);
+  background: var(--c-bg);
+  margin: 0;
+}
+
 #root {
   width: 100vw;
   height: 100vh;
 }
 
-.toolbar {
+/* ─── App shell ──────────────────────────────────────────────────────────────── */
+.app-shell {
+  height: 100vh;
+  width: 100vw;
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  min-height: 0;
+  background: var(--c-bg);
+}
+
+/* ─── Top toolbar ────────────────────────────────────────────────────────────── */
+.app-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  background: var(--c-navy);
+  border-bottom: 2px solid var(--c-blue);
 }
 
-.chart-toolbar {
-  justify-content: flex-start;
-  align-items: center;
-  row-gap: 6px;
-  column-gap: 6px;
-  container-type: inline-size;
+.app-toolbar__brand {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff;
+  opacity: 0.9;
+  margin-right: var(--sp-3);
+  padding-right: var(--sp-3);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.chart-toolbar .toolbar-group {
-  min-width: 0;
+.app-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.18);
+  margin: 0 var(--sp-1);
 }
 
-.chart-toolbar .toolbar-group--file {
-  min-width: 160px;
-  flex: 1 1 220px;
+/* ─── Workspace split ────────────────────────────────────────────────────────── */
+.app-workspace {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 0;
+  height: 100%;
 }
 
-.chart-toolbar .toolbar-group--bounds {
-  justify-content: flex-start;
-  flex: 1 1 260px;
-}
-
-.chart-toolbar .toolbar-group--stream {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.toolbar-group--file {
-  min-width: 220px;
-}
-
-.toolbar-group--bounds {
-  justify-content: flex-end;
-}
-
-@container (max-width: 740px) {
-  .chart-toolbar .toolbar-group--file,
-  .chart-toolbar .toolbar-group--bounds,
-  .chart-toolbar .toolbar-group--stream {
-    flex-basis: 100%;
-  }
-
-  .chart-toolbar .toolbar-group--stream {
-    margin-left: 0;
-  }
-}
-
-.toolbar-label {
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.control-input,
-.control-button,
-.control-file {
-  border: 1px solid rgba(128, 128, 128, 0.45);
-  border-radius: 6px;
-  background: rgba(128, 128, 128, 0.12);
-  color: inherit;
-  font-size: 11px;
-  line-height: 1.2;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    transform 0.12s ease;
-}
-
-.control-input,
-.control-file {
-  padding: 4px 6px;
-}
-
-.control-input {
-  width: 84px;
-}
-
+/* ─── Shared button/input primitives ─────────────────────────────────────────── */
 .control-button {
-  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--r-sm);
   cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    transform 0.1s;
+  white-space: nowrap;
+  line-height: 1.4;
 }
-
-.control-button:hover,
-.control-input:hover,
-.control-file:hover {
-  background: rgba(128, 128, 128, 0.2);
-  border-color: rgba(128, 128, 128, 0.65);
+.control-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.38);
 }
-
 .control-button:active {
   transform: translateY(1px);
 }
-
-.control-button:focus-visible,
-.control-input:focus-visible,
-.control-file:focus-visible {
-  outline: 2px solid rgba(100, 149, 237, 0.8);
-  outline-offset: 1px;
+.control-button:focus-visible {
+  outline: 2px solid var(--c-blue);
+  outline-offset: 2px;
 }
 
-.file-name {
-  font-size: 11px;
-  opacity: 0.8;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* On-white variant (settings popover, chart panel) */
+.control-button--onwhite {
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border-color: var(--c-border);
+}
+.control-button--onwhite:hover {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
+}
+
+.control-button--danger {
+  color: var(--c-red);
+}
+.control-button--danger:hover {
+  background: var(--c-red-light);
+  border-color: var(--c-red);
+}
+
+.control-input,
+.control-file {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.control-input {
+  width: 84px;
+}
+.control-input:focus,
+.control-file:focus {
+  outline: none;
+  border-color: var(--c-blue);
+  box-shadow: 0 0 0 3px rgba(30, 86, 224, 0.12);
+}
+.control-input:hover {
+  border-color: var(--c-border-dark);
 }
 
 .control-error {
-  color: #ff8080;
+  color: var(--c-red);
   font-size: 11px;
-  flex-basis: 100%;
+  font-family: var(--font-mono);
 }
 
+.file-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────────── */
+.app-sidebar {
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── RunExplorer (rex-*) ────────────────────────────────────────────────────── */
+.rex-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.rex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-navy);
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+.rex-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.rex-header-actions {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.rex-add-btn {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+  white-space: nowrap;
+}
+.rex-add-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+
+.rex-add-btn--primary {
+  background: var(--c-blue);
+  border-color: transparent;
+  color: #fff;
+}
+.rex-add-btn--primary:hover {
+  background: #1a4acc;
+}
+
+.rex-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--sp-1);
+}
+
+/* Tree rows */
+.rex-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 var(--sp-2) 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background 0.1s;
+}
+.rex-row:hover {
+  background: var(--c-blue-light);
+}
+
+.rex-row--selected {
+  background: var(--c-blue-light);
+}
+
+.rex-row--active .rex-label {
+  color: var(--c-blue);
+  font-weight: 600;
+}
+.rex-row--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 20%;
+  height: 60%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--c-blue);
+}
+
+.rex-row--dir .rex-label {
+  font-weight: 600;
+  color: var(--c-text-mid);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rex-icon {
+  font-size: 9px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--c-text-muted);
+}
+
+/* Colored pip for files */
+.rex-file-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-border-dark);
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: background 0.1s;
+}
+.rex-row--active .rex-file-pip {
+  background: var(--c-blue);
+}
+.rex-row:hover .rex-file-pip {
+  background: var(--c-blue);
+}
+
+.rex-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--c-text);
+}
+
+.rex-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  padding: 1px 5px;
+  border: 1px solid var(--c-blue);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: 0 0 0 3px rgba(30, 86, 224, 0.12);
+  outline: none;
+}
+
+.rex-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+.rex-row:hover .rex-actions,
+.rex-row--selected .rex-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rex-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+.rex-btn:hover {
+  background: rgba(30, 86, 224, 0.12);
+  color: var(--c-blue);
+}
+.rex-btn--delete:hover {
+  background: var(--c-red-light);
+  color: var(--c-red);
+}
+
+/* ─── Chart panel ─────────────────────────────────────────────────────────────── */
 .chart-panel-shell {
   height: 100%;
   width: 100%;
   display: block;
   min-height: 0;
   position: relative;
+  background: var(--c-surface);
 }
 
 .chart-panel-topbar {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: var(--sp-2);
+  right: var(--sp-3);
   z-index: 15;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: 0;
+  gap: var(--sp-1);
 }
 
 .chart-settings-trigger {
-  min-width: 28px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  color: var(--c-text-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.chart-settings-trigger:hover {
+  background: var(--c-blue-light);
+  color: var(--c-blue);
+  border-color: var(--c-blue);
 }
 
 .chart-panel-file-name {
-  max-width: 170px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(128, 128, 128, 0.35);
-  border-radius: 6px;
-  padding: 3px 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  max-width: 180px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-muted);
 }
 
 .chart-panel-chart {
@@ -177,68 +479,77 @@
 
 .chart-panel-error {
   position: absolute;
-  left: 8px;
-  bottom: 6px;
+  left: var(--sp-3);
+  bottom: var(--sp-2);
   z-index: 10;
-  margin: 0;
-  background: transparent;
-  border-radius: 0;
-  padding: 0;
 }
 
+/* ─── Chart settings popover ─────────────────────────────────────────────────── */
 .chart-settings-popover {
   position: absolute;
-  top: 30px;
-  left: auto;
-  right: 8px;
+  top: 36px;
+  right: var(--sp-3);
   z-index: 20;
   display: grid;
-  gap: 10px;
-  width: min(360px, calc(100% - 16px));
-  max-width: 360px;
-  max-height: calc(100% - 40px);
+  gap: var(--sp-3);
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 48px);
   overflow: auto;
-  padding: 10px;
-  border: 1px solid rgba(128, 128, 128, 0.35);
-  border-radius: 8px;
-  background: rgba(248, 248, 248, 0.98);
-  color: rgba(34, 34, 34, 0.96);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
 }
 
 .chart-settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 600;
+  color: var(--c-text-mid);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .chart-settings-close {
-  min-width: 24px;
+  width: 22px;
   height: 22px;
   padding: 0;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  font-size: 16px;
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.chart-settings-close:hover {
+  background: var(--c-red-light);
+  color: var(--c-red);
 }
 
 .chart-settings-section {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .chart-settings-section-title {
+  font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  opacity: 0.75;
-}
-
-.chart-settings-popover .toolbar-group {
-  gap: 8px;
-}
-
-.chart-settings-popover .toolbar-group--bounds {
-  justify-content: flex-start;
+  color: var(--c-text-muted);
 }
 
 .chart-settings-file-row {
@@ -247,195 +558,294 @@
 
 .chart-settings-bounds-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
 }
 
 .chart-settings-label {
   display: grid;
-  align-items: start;
-  gap: 4px;
-  min-width: 0;
+  gap: var(--sp-1);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--c-text-mid);
 }
-
 .chart-settings-label .control-input {
   width: 100%;
   min-width: 0;
-  box-sizing: border-box;
 }
 
 .chart-settings-select-label {
   width: 100%;
 }
-
 .chart-settings-select {
   width: 100%;
   appearance: auto;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  padding: 4px 6px;
 }
 
 .chart-settings-actions {
-  justify-content: flex-start;
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
 }
 
-.chart-settings-popover .control-input,
-.chart-settings-popover .control-file,
+/* Override control-button inside popover to be on-white */
 .chart-settings-popover .control-button {
-  color: rgba(34, 34, 34, 0.96);
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.2);
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border-color: var(--c-border);
+}
+.chart-settings-popover .control-button:hover {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
 }
 
-.chart-settings-popover .control-button:hover,
-.chart-settings-popover .control-input:hover,
-.chart-settings-popover .control-file:hover {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.3);
+/* ─── Dockview custom tab ────────────────────────────────────────────────────── */
+.dv-tab-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dv-tab-title {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.dv-tab-rename-input {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  width: 100px;
+  padding: 1px 4px;
+  border: 1px solid var(--c-blue);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(30, 86, 224, 0.15);
+}
+
+.dv-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-left: 2px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.4;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition:
+    opacity 0.1s,
+    background 0.1s;
+  flex-shrink: 0;
+}
+.dv-tab-close:hover {
+  opacity: 1;
+  background: rgba(224, 43, 43, 0.12);
+  color: var(--c-red);
+}
+
+/* ─── Toolbar groups (used in ChartSettingsPopover) ──────────────────────────── */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.toolbar-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-mid);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.toolbar-group--file {
+  min-width: 160px;
+  flex: 1 1 220px;
+}
+.toolbar-group--bounds {
+  justify-content: flex-start;
+  flex: 1 1 260px;
+}
+.toolbar-group--stream {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+@container (max-width: 740px) {
+  .toolbar-group--file,
+  .toolbar-group--bounds,
+  .toolbar-group--stream {
+    flex-basis: 100%;
+  }
+  .toolbar-group--stream {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 520px) {
   .chart-settings-bounds-grid {
     grid-template-columns: 1fr;
   }
-
-  .chart-settings-actions {
-    justify-content: flex-start;
-  }
 }
 
-/* ─── RunExplorer sidebar ─────────────────────────────────────────────────── */
+/* ─── "New panel" button — overlaid at the right end of the dockview tab bar ─── */
+/*
+ * Absolutely positioned inside the per-file wrapper div so it always sits
+ * flush with the tab bar regardless of how many tabs exist. z-index 10 keeps
+ * it above the dockview chrome but below popover overlays.
+ */
+.dv-add-panel-btn {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 10;
 
-.run-explorer-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  font-size: 12px;
-}
-
-.run-explorer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 6px 8px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-  flex-shrink: 0;
-}
-
-.run-explorer-title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  opacity: 0.6;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.run-explorer-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.run-explorer-body {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.run-explorer-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
-  width: 100%;
-  height: 100%;
-  padding: 0 6px 0 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.1s ease;
-  box-sizing: border-box;
-}
+  padding: 3px 10px 3px 8px;
 
-.run-explorer-row:hover {
-  background: rgba(128, 128, 128, 0.1);
-}
-
-.run-explorer-row--selected {
-  background: rgba(100, 149, 237, 0.15);
-}
-
-.run-explorer-row--selected:hover {
-  background: rgba(100, 149, 237, 0.22);
-}
-
-/* Active run — the dockview currently on screen */
-.run-explorer-row--active-file .run-explorer-label {
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-weight: 600;
+  color: var(--c-blue);
+  background: var(--c-blue-light);
+  border: 1.5px solid var(--c-blue);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background 0.12s,
+    box-shadow 0.12s,
+    transform 0.1s;
+  box-shadow: 0 1px 4px rgba(30, 86, 224, 0.15);
+}
+.dv-add-panel-btn:hover {
+  background: #c8d9ff;
+  box-shadow: 0 2px 8px rgba(30, 86, 224, 0.25);
+}
+.dv-add-panel-btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
-.run-explorer-row--active-file .run-explorer-icon {
-  opacity: 1;
-  color: #5470c6;
+.dv-add-panel-btn__icon {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  margin-top: -1px;
 }
 
-.run-explorer-icon {
-  font-size: 10px;
-  opacity: 0.5;
-  width: 12px;
-  text-align: center;
-  flex-shrink: 0;
+/* ─── Styled file chooser (ChartSettingsPopover) ─────────────────────────────── */
+.chart-settings-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
 }
 
-.run-explorer-label {
-  flex: 1;
-  min-width: 0;
+/* The <label> that activates the hidden <input type="file"> */
+.chart-settings-file-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+  user-select: none;
+}
+.chart-settings-file-btn:hover {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
+}
+
+.chart-settings-file-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.run-explorer-rename-input {
-  flex: 1;
   min-width: 0;
+  flex: 1;
+}
+
+/* Action buttons inside the popover (non-nav context, so override control-button) */
+.chart-settings-action-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-family: var(--font-ui);
   font-size: 12px;
-  font-family: inherit;
-  padding: 1px 4px;
-  border: 1px solid rgba(100, 149, 237, 0.65);
-  border-radius: 3px;
-  background: white;
-  color: #222;
-  outline: none;
-}
-
-.run-explorer-delete-btn {
-  opacity: 0;
-  pointer-events: none;
-  margin-left: auto;
-  padding: 0 3px;
-  font-size: 14px;
-  line-height: 1;
-  background: none;
-  border: none;
+  font-weight: 500;
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  color: inherit;
-  border-radius: 3px;
-  flex-shrink: 0;
   transition:
-    opacity 0.1s,
-    background 0.1s;
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.chart-settings-action-btn:hover {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
+}
+.chart-settings-action-btn--primary {
+  color: var(--c-blue);
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+}
+.chart-settings-action-btn--primary:hover {
+  background: #c8d9ff;
 }
 
-.run-explorer-row:hover .run-explorer-delete-btn,
-.run-explorer-row--selected .run-explorer-delete-btn {
-  opacity: 0.45;
-  pointer-events: auto;
+.chart-settings-action-btn--danger {
+  color: var(--c-red);
+  background: var(--c-red-light);
+  border-color: var(--c-red);
 }
-
-.run-explorer-delete-btn:hover {
-  opacity: 1 !important;
-  background: rgba(255, 77, 79, 0.15);
-  color: #ff4d4f;
+.chart-settings-action-btn--danger:hover {
+  background: #fbd0d0;
 }
