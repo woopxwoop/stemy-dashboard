@@ -14,8 +14,11 @@ function ChartSettingsPopover({
   isStreaming,
   onStartStream,
   onStopStream,
+  // API run — null for manual panels
+  runId,
+  apiLoading,
+  onRefetchRun,
 }) {
-  // useId gives a stable, unique id for the hidden file input ↔ label pair.
   const fileInputId = useId();
 
   return (
@@ -32,11 +35,31 @@ function ChartSettingsPopover({
         </button>
       </div>
 
-      {/* ── Data source ───────────────────────────────────────────── */}
-      <div className="chart-settings-section">
-        <span className="chart-settings-section-title">Data source</span>
+      {/* ── API run (only shown when this panel is bound to an API run) ── */}
+      {runId && (
+        <div className="chart-settings-section">
+          <span className="chart-settings-section-title">API run</span>
+          <div className="chart-settings-file-row">
+            <span className="chart-settings-file-name">
+              Run ID: <strong>{runId}</strong>
+            </span>
+            <button
+              className="chart-settings-action-btn"
+              onClick={onRefetchRun}
+              disabled={apiLoading}
+            >
+              {apiLoading ? "Loading…" : "↺ Refresh"}
+            </button>
+          </div>
+        </div>
+      )}
 
-        {/* Hidden native input; the visible button is a <label> */}
+      {/* ── Data source (file upload) ─────────────────────────────── */}
+      <div className="chart-settings-section">
+        <span className="chart-settings-section-title">
+          {runId ? "Override with file" : "Data source"}
+        </span>
+
         <input
           id={fileInputId}
           type="file"

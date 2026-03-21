@@ -1,4 +1,10 @@
-import React, { useMemo, useState, useRef, useCallback } from "react";
+import React, {
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+} from "react";
 import ReactECharts from "echarts-for-react";
 import generateNormalArray from "../utils/NormallyDistributedArray";
 import { DEFAULT_STREAM_PRESET } from "../utils/simulateStream";
@@ -15,12 +21,12 @@ import useStreamingDataset from "./echart/useStreamingDataset";
 import { useDayHoverSync } from "../hooks/useDayHoverSync";
 import { useChartResize } from "../hooks/useChartResize";
 import { useFileImport } from "../hooks/useFileImport";
+import { useRunApi } from "../hooks/useRunApi";
 
-// Strip directory path and extension to get a clean display name.
 const toDisplayName = (filename) =>
   filename.replace(/\.[^.]+$/, "").replace(/^.*[\\/]/, "");
 
-// ── Static fallback dataset (no file loaded, no stream active) ───────────────
+// ── Static fallback dataset (no file loaded, no stream, no API run) ──────────
 
 function buildMockDataset() {
   const labels = [];
@@ -41,9 +47,14 @@ function buildMockDataset() {
 // ── EChart panel ─────────────────────────────────────────────────────────────
 
 function EChart(props) {
-  // props.api is the dockview panel API — used to update the tab title.
   const panelApi = props?.api;
   const linkScope = props?.params?.linkScope ?? "global";
+
+  /**
+   * runId is set when this panel was created from an API-sourced sidebar entry.
+   * It is null for manually-created panels (file upload / stream / mock).
+   */
+  const runId = props?.params?.runId ?? null;
 
   const initialBounds = getBoundsFromPreset(DEFAULT_STREAM_PRESET);
   const [error, setError] = useState("");
@@ -52,8 +63,9 @@ function EChart(props) {
   const [streamPresetKey, setStreamPresetKey] = useState(DEFAULT_STREAM_PRESET);
   const [manualBounds, setManualBounds] = useState(initialBounds);
 
+  // ── Data source 1: simulated stream ────────────────────────────────────────
   const {
-    dataset,
+    dataset: streamDataset,
     isStreaming,
     streamOutlierPoints,
     setDatasetWithOutliers,
@@ -61,8 +73,39 @@ function EChart(props) {
     stopStream,
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
+  // ── Data source 2: API run ──────────────────────────────────────────────────
+  const {
+    dataset: apiDataset,
+    isLoading: apiLoading,
+    error: apiError,
+    refetch: refetchRun,
+  } = useRunApi(runId);
+
+  // When the API run loads, update the tab title to the run name.
+  // (The API returns the name via fetchRun; we derive it from selectedFileName
+  //  which is set below when apiDataset arrives.)
+  useEffect(() => {
+    if (apiDataset && runId) {
+      // Title was already set from the sidebar entry name when the panel was
+      // created; nothing to do unless the user wants to override it.
+    }
+  }, [apiDataset, runId]);
+
+  // Propagate API errors into the shared error state.
+  useEffect(() => {
+    if (apiError) setError(apiError);
+  }, [apiError]);
+
+  // ── Mock dataset (stable across re-renders) ────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const mockDataset = useMemo(() => buildMockDataset(), []);
+
+  // ── Active dataset priority ─────────────────────────────────────────────────
+  // 1. Streaming (user explicitly started it)
+  // 2. File-uploaded data (stored in streamDataset via setDatasetWithOutliers)
+  // 3. API run data
+  // 4. Mock fallback
+  const dataset = streamDataset ?? apiDataset ?? mockDataset;
 
   const wrapperRef = useRef(null);
   const settingsRef = useRef(null);
@@ -77,7 +120,7 @@ function EChart(props) {
   const chartSize = useChartResize(wrapperRef, chartInstance);
 
   // ── Settings popover close-on-outside-click / Escape ─────────────────────
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isSettingsOpen) return;
     const onPointerDown = (e) => {
       if (!settingsRef.current?.contains(e.target)) setIsSettingsOpen(false);
@@ -93,26 +136,23 @@ function EChart(props) {
     };
   }, [isSettingsOpen]);
 
-  // ── File import ───────────────────────────────────────────────────────────
+  // ── File import ────────────────────────────────────────────────────────────
   const { handleFileChange } = useFileImport({
     onDataset: setDatasetWithOutliers,
     onError: setError,
     onFileName: (name) => {
       setSelectedFileName(name);
-      // Automatically rename the tab to the file name (no extension).
       panelApi?.setTitle(toDisplayName(name));
     },
     onStreamStop: stopStream,
   });
 
-  // ── Stream controls ───────────────────────────────────────────────────────
+  // ── Stream controls ────────────────────────────────────────────────────────
   const handleStartStream = useCallback(() => {
     const preset = startStream();
     setError("");
-    const label = preset.label;
-    setSelectedFileName(label);
-    // Automatically rename the tab to the stream preset label.
-    panelApi?.setTitle(label);
+    setSelectedFileName(preset.label);
+    panelApi?.setTitle(preset.label);
   }, [startStream, panelApi]);
 
   const onStreamPresetChange = useCallback((nextKey) => {
@@ -122,12 +162,11 @@ function EChart(props) {
 
   // ── Chart option ──────────────────────────────────────────────────────────
   const option = useMemo(() => {
-    const activeDataset = dataset ?? mockDataset;
     const timeline = buildTimeline(
-      activeDataset.labels,
-      activeDataset.values,
-      activeDataset.times,
-      activeDataset.samplesPerDay ?? 8,
+      dataset.labels,
+      dataset.values,
+      dataset.times,
+      dataset.samplesPerDay ?? 8,
     );
 
     dayToDataIndicesRef.current = timeline.dayToDataIndices;
@@ -141,7 +180,7 @@ function EChart(props) {
       upperFence = manualUpper;
       outlierPoints = streamOutlierPoints;
     } else {
-      const sorted = [...activeDataset.values].sort((a, b) => a - b);
+      const sorted = [...dataset.values].sort((a, b) => a - b);
       const q1 =
         sorted[Math.floor(sorted.length * 0.25)] ?? DEFAULT_BOUNDS.lower;
       const q3 =
@@ -150,7 +189,7 @@ function EChart(props) {
       lowerFence = manualLower ?? q1 - 1.5 * iqr;
       upperFence = manualUpper ?? q3 + 1.5 * iqr;
       outlierPoints = computeOutlierPoints(
-        activeDataset.values,
+        dataset.values,
         timeline.lineData.map(([x]) => x),
         lowerFence,
         upperFence,
@@ -280,9 +319,12 @@ function EChart(props) {
         },
       ],
     };
-  }, [dataset, isStreaming, manualBounds, mockDataset, streamOutlierPoints]);
+  }, [dataset, isStreaming, manualBounds, streamOutlierPoints]);
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // Loading overlay for API-sourced panels.
+  const showLoadingOverlay = apiLoading && !streamDataset;
 
   return (
     <div className="chart-panel-shell">
@@ -297,7 +339,9 @@ function EChart(props) {
           ⚙
         </button>
         <span className="chart-panel-file-name">
-          {selectedFileName || "No file loaded"}
+          {apiLoading
+            ? "Loading…"
+            : selectedFileName || (runId ? `Run ${runId}` : "No file loaded")}
         </span>
       </div>
 
@@ -317,11 +361,21 @@ function EChart(props) {
           isStreaming={isStreaming}
           onStartStream={handleStartStream}
           onStopStream={stopStream}
+          // API run props — null for manual panels
+          runId={runId}
+          apiLoading={apiLoading}
+          onRefetchRun={refetchRun}
         />
       )}
 
       {error && (
         <span className="control-error chart-panel-error">{error}</span>
+      )}
+
+      {showLoadingOverlay && (
+        <div className="chart-loading-overlay">
+          <span className="chart-loading-text">Loading run data…</span>
+        </div>
       )}
 
       <div

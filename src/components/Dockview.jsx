@@ -5,6 +5,10 @@ import EChart from "./EChart";
 import RunExplorer from "./RunExplorer";
 import { useRunManager } from "../hooks/useRunManager";
 
+// ── API source ────────────────────────────────────────────────────────────────
+// Single import door. To switch mock ↔ real, edit runsApi.js only.
+import { fetchRuns } from "../api/runsApi";
+
 // ── Panel default ──────────────────────────────────────────────────────────────
 
 const Default = (props) => (
@@ -12,10 +16,6 @@ const Default = (props) => (
 );
 
 // ── Renameable tab ─────────────────────────────────────────────────────────────
-//
-// Subscribes to api.onDidTitleChange so the label stays in sync when EChart
-// calls api.setTitle() automatically on file load / stream start.
-// Double-click to rename; Enter or blur to confirm; Escape to cancel.
 
 function RenameableTab({ api }) {
   const [title, setTitle] = useState(api.title ?? "");
@@ -32,16 +32,14 @@ function RenameableTab({ api }) {
     setDraft(title);
     setEditing(true);
   };
-
   const commit = () => {
-    const name = draft.trim();
-    if (name) {
-      api.setTitle(name);
-      setTitle(name);
+    const n = draft.trim();
+    if (n) {
+      api.setTitle(n);
+      setTitle(n);
     }
     setEditing(false);
   };
-
   const cancel = () => setEditing(false);
 
   return (
@@ -87,9 +85,6 @@ function RenameableTab({ api }) {
 const components = { default: Default, echart: EChart };
 const tabComponents = { default: RenameableTab, echart: RenameableTab };
 
-// Dockview tab bar height — button is overlaid at this offset from the top.
-const TAB_BAR_HEIGHT = 38;
-
 let panelCounter = 0;
 
 // ── Dockview ──────────────────────────────────────────────────────────────────
@@ -104,7 +99,7 @@ function Dockview() {
 
   // ── Panel helpers ──────────────────────────────────────────────────────────
 
-  const addPanelToFile = useCallback((fileId) => {
+  const addPanelToFile = useCallback((fileId, runId = null) => {
     const { api } = getInstance(fileId);
     if (!api) return null;
 
@@ -117,7 +112,7 @@ function Dockview() {
       title,
       component: "echart",
       tabComponent: "echart",
-      params: { linkScope: fileId },
+      params: { linkScope: fileId, runId: runId ?? null },
       position: activePanel
         ? { direction: "right", referencePanel: activePanel.id }
         : undefined,
@@ -166,10 +161,20 @@ function Dockview() {
     handleDelete,
     handleMove,
     registerPanel,
+    loadApiRuns,
   } = useRunManager({
     onRevealFile: revealFile,
     onFilesWillDelete: handleFilesWillDelete,
   });
+
+  // ── Auto-load runs on mount ────────────────────────────────────────────────
+
+  useEffect(() => {
+    fetchRuns()
+      .then(loadApiRuns)
+      .catch((err) => console.error("Failed to load runs:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once
 
   // ── Dockview ready ─────────────────────────────────────────────────────────
 
@@ -189,22 +194,42 @@ function Dockview() {
               " dockview-theme-light";
           }
 
-          const panel = addPanelToFile(fileId);
+          const file = files.find((f) => f.id === fileId);
+          const panel = addPanelToFile(fileId, file?.runId ?? null);
           if (panel) registerPanel(fileId, panel.id, panel.title);
         };
       }
       return instance.onReady;
     },
-    [addPanelToFile, registerPanel],
+    [addPanelToFile, registerPanel, files],
   );
 
   const addPanel = useCallback(
     (fileId) => {
-      const panel = addPanelToFile(fileId);
+      const file = files.find((f) => f.id === fileId);
+      const panel = addPanelToFile(fileId, file?.runId ?? null);
       if (panel) registerPanel(fileId, panel.id, panel.title);
     },
-    [addPanelToFile, registerPanel],
+    [files, addPanelToFile, registerPanel],
   );
+
+  // ── Load runs from API ─────────────────────────────────────────────────────
+
+  const [apiLoadState, setApiLoadState] = useState("idle"); // "idle" | "loading" | "error"
+
+  const handleLoadApiRuns = useCallback(async () => {
+    setApiLoadState("loading");
+    try {
+      const runs = await fetchRuns();
+      loadApiRuns(runs);
+      setApiLoadState("idle");
+    } catch (err) {
+      console.error("Failed to load runs:", err);
+      setApiLoadState("error");
+      // Reset back to idle after showing the error briefly.
+      setTimeout(() => setApiLoadState("idle"), 3000);
+    }
+  }, [loadApiRuns]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -225,6 +250,8 @@ function Dockview() {
             onRename={handleRename}
             onDelete={handleDelete}
             onMove={handleMove}
+            onLoadApiRuns={handleLoadApiRuns}
+            apiLoadState={apiLoadState}
           />
         </aside>
 
@@ -250,7 +277,6 @@ function Dockview() {
                 pointerEvents: file.id === activeFileId ? "auto" : "none",
               }}
             >
-              {/* "+ New panel" button — overlaid at the right end of the tab bar */}
               <button
                 className="dv-add-panel-btn"
                 title="Add a new graph panel"

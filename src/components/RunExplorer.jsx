@@ -9,7 +9,6 @@ import React, {
 import { Tree } from "react-arborist";
 
 const ROW_HEIGHT = 32;
-
 const ExplorerCtx = createContext(null);
 
 // ─── Node renderer ─────────────────────────────────────────────────────────────
@@ -41,7 +40,6 @@ function Node({ node, style, dragHandle }) {
         node.edit();
       }}
     >
-      {/* Colored pip for files; caret for directories */}
       {isDir ? (
         <span className="rex-icon">{node.isOpen ? "▾" : "▸"}</span>
       ) : (
@@ -69,7 +67,7 @@ function Node({ node, style, dragHandle }) {
           className="rex-btn rex-btn--rename"
           type="button"
           tabIndex={-1}
-          title="Rename (or double-click)"
+          title="Rename"
           aria-label={`Rename ${node.data.name}`}
           onClick={(e) => {
             e.stopPropagation();
@@ -106,6 +104,10 @@ function RunExplorer({
   onRename,
   onDelete,
   onMove,
+  // Called with raw ApiRun[] — fetching is done by the parent (Dockview)
+  // so RunExplorer never imports from the API layer directly.
+  onLoadApiRuns,
+  apiLoadState, // "idle" | "loading" | "error" — driven by Dockview
 }) {
   const wrapperRef = useRef(null);
   const [treeHeight, setTreeHeight] = useState(0);
@@ -122,10 +124,7 @@ function RunExplorer({
   }, []);
 
   const ctx = useMemo(
-    () => ({
-      requestDelete: (id) => onDelete?.({ ids: [id] }),
-      activeFileId,
-    }),
+    () => ({ requestDelete: (id) => onDelete?.({ ids: [id] }), activeFileId }),
     [onDelete, activeFileId],
   );
 
@@ -135,20 +134,19 @@ function RunExplorer({
       setSelectedNodeInfo(null);
       return;
     }
-
     const isDir = node.isInternal;
     setSelectedNodeInfo({
       id: node.data.id,
       nodeType: isDir ? "directory" : "file",
       parentId: node.parent?.data?.id ?? null,
     });
-
     if (!isDir) onFileSelect?.({ fileId: node.data.id });
   };
 
   return (
     <ExplorerCtx.Provider value={ctx}>
       <div className="rex-shell">
+        {/* ── Header ── */}
         <div className="rex-header">
           <span className="rex-title">Runs</span>
           <div className="rex-header-actions">
@@ -171,6 +169,7 @@ function RunExplorer({
           </div>
         </div>
 
+        {/* ── Tree ── */}
         <div className="rex-body" ref={wrapperRef}>
           {treeHeight > 0 && (
             <Tree
@@ -192,6 +191,28 @@ function RunExplorer({
             </Tree>
           )}
         </div>
+
+        {/* ── Dev footer — load from API ── */}
+        {onLoadApiRuns && (
+          <div className="rex-dev-footer">
+            <span className="rex-dev-label">Dev</span>
+            <button
+              className="rex-dev-load-btn"
+              onClick={onLoadApiRuns}
+              disabled={apiLoadState === "loading"}
+              title="Fetch runs from the API and sync the tree"
+            >
+              {apiLoadState === "loading" && (
+                <span className="rex-dev-spinner" />
+              )}
+              {apiLoadState === "error"
+                ? "Error — retry?"
+                : apiLoadState === "loading"
+                  ? "Loading…"
+                  : "Load from API"}
+            </button>
+          </div>
+        )}
       </div>
     </ExplorerCtx.Provider>
   );

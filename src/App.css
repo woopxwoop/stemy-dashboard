@@ -686,3 +686,143 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Chart loading overlay (API fetch in progress) ─────────────────────────── */
+.chart-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.chart-loading-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ─── Disabled state for action buttons ─────────────────────────────────────── */
+.chart-settings-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── RunExplorer footer (Load from API) ─────────────────────────────────────── */
+.rex-footer {
+  flex-shrink: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.rex-footer-error {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-red);
+  word-break: break-word;
+}
+
+.rex-load-api-btn {
+  width: 100%;
+  padding: 6px var(--sp-3);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.rex-load-api-btn:hover:not(:disabled) {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
+}
+.rex-load-api-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Sidebar dev footer (Load from API) ─────────────────────────────────────── */
+.rex-dev-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px dashed var(--c-border);
+  background: #f7f9fc;
+}
+
+.rex-dev-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+  background: var(--c-border);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.rex-dev-load-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-mid);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+  white-space: nowrap;
+}
+.rex-dev-load-btn:hover:not(:disabled) {
+  background: var(--c-blue-light);
+  border-color: var(--c-blue);
+  color: var(--c-blue);
+}
+.rex-dev-load-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes rex-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.rex-dev-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--c-border-dark);
+  border-top-color: var(--c-blue);
+  border-radius: 50%;
+  animation: rex-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
