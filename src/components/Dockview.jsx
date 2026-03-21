@@ -236,7 +236,7 @@ function Dockview() {
   return (
     <div className="app-shell">
       <header className="app-toolbar">
-        <span className="app-toolbar__brand">Atheria</span>
+        <span className="app-toolbar__brand">SteMy</span>
       </header>
 
       <div className="app-workspace">
