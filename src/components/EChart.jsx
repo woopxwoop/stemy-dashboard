@@ -95,11 +95,8 @@ function EChart(props) {
     refetch: refetchRun,
   } = useRunApi(runId);
 
-  useEffect(() => {
-    if (apiError) setError(apiError);
-  }, [apiError]);
+  const displayError = error || apiError;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const mockDataset = useMemo(() => buildMockDataset(), []);
 
   const dataset = streamDataset ?? apiDataset ?? mockDataset;
@@ -163,16 +160,22 @@ function EChart(props) {
   });
 
   // ── Chart option ──────────────────────────────────────────────────────────
-  const option = useMemo(() => {
-    const timeline = buildTimeline(
-      dataset.labels,
-      dataset.values,
-      dataset.times,
-      dataset.samplesPerDay ?? 8,
-    );
+  const timeline = useMemo(
+    () =>
+      buildTimeline(
+        dataset.labels,
+        dataset.values,
+        dataset.times,
+        dataset.samplesPerDay ?? 8,
+      ),
+    [dataset],
+  );
 
+  useEffect(() => {
     dayToDataIndicesRef.current = timeline.dayToDataIndices;
+  }, [timeline]);
 
+  const option = useMemo(() => {
     const manualLower = parseManualNumber(manualBounds.lower);
     const manualUpper = parseManualNumber(manualBounds.upper);
     let lowerFence, upperFence, outlierPoints;
@@ -359,7 +362,14 @@ function EChart(props) {
         },
       ],
     };
-  }, [dataset, isStreaming, manualBounds, streamOutlierPoints, yAxisLabel]);
+  }, [
+    timeline,
+    dataset,
+    isStreaming,
+    manualBounds,
+    streamOutlierPoints,
+    yAxisLabel,
+  ]);
 
   const showLoadingOverlay = apiLoading && !streamDataset;
 
@@ -404,8 +414,8 @@ function EChart(props) {
         />
       )}
 
-      {error && (
-        <span className="control-error chart-panel-error">{error}</span>
+      {displayError && (
+        <span className="control-error chart-panel-error">{displayError}</span>
       )}
 
       {showLoadingOverlay && (
