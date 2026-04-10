@@ -3,10 +3,8 @@ import "dockview/dist/styles/dockview.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import EChart from "./EChart";
 import RunExplorer from "./RunExplorer";
+import AgentAvatar from "./AgentAvatar";
 import { useRunManager } from "../hooks/useRunManager";
-
-// ── API source ────────────────────────────────────────────────────────────────
-// Single import door. To switch mock ↔ real, edit runsApi.js only.
 import { fetchRuns } from "../api/runsApi";
 
 // ── Panel default ──────────────────────────────────────────────────────────────
@@ -97,6 +95,10 @@ function Dockview() {
     return fileInstances.current[fileId];
   };
 
+  // ── Agent state (will be driven by real agent events later) ───────────────
+  // "idle" | "thinking" | "active" | "alert"
+  const [agentState, setAgentState] = useState("idle");
+
   // ── Panel helpers ──────────────────────────────────────────────────────────
 
   const addPanelToFile = useCallback((fileId, runId = null) => {
@@ -170,11 +172,21 @@ function Dockview() {
   // ── Auto-load runs on mount ────────────────────────────────────────────────
 
   useEffect(() => {
+    setAgentState("thinking");
     fetchRuns()
-      .then(loadApiRuns)
-      .catch((err) => console.error("Failed to load runs:", err));
+      .then((runs) => {
+        loadApiRuns(runs);
+        setAgentState("active");
+        // Return to idle after a beat
+        setTimeout(() => setAgentState("idle"), 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to load runs:", err);
+        setAgentState("alert");
+        setTimeout(() => setAgentState("idle"), 3000);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally runs once
+  }, []);
 
   // ── Dockview ready ─────────────────────────────────────────────────────────
 
@@ -213,21 +225,27 @@ function Dockview() {
     [files, addPanelToFile, registerPanel],
   );
 
-  // ── Load runs from API ─────────────────────────────────────────────────────
+  // ── Load runs from API (manual refresh) ───────────────────────────────────
 
-  const [apiLoadState, setApiLoadState] = useState("idle"); // "idle" | "loading" | "error"
+  const [apiLoadState, setApiLoadState] = useState("idle");
 
   const handleLoadApiRuns = useCallback(async () => {
     setApiLoadState("loading");
+    setAgentState("thinking");
     try {
       const runs = await fetchRuns();
       loadApiRuns(runs);
       setApiLoadState("idle");
+      setAgentState("active");
+      setTimeout(() => setAgentState("idle"), 2000);
     } catch (err) {
       console.error("Failed to load runs:", err);
       setApiLoadState("error");
-      // Reset back to idle after showing the error briefly.
-      setTimeout(() => setApiLoadState("idle"), 3000);
+      setAgentState("alert");
+      setTimeout(() => {
+        setApiLoadState("idle");
+        setAgentState("idle");
+      }, 3000);
     }
   }, [loadApiRuns]);
 
@@ -296,6 +314,9 @@ function Dockview() {
           ))}
         </div>
       </div>
+
+      {/* ── Agent avatar — fixed, draggable ── */}
+      <AgentAvatar state={agentState} />
     </div>
   );
 }

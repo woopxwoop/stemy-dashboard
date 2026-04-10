@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import ReactECharts from "echarts-for-react";
 import generateNormalArray from "../utils/NormallyDistributedArray";
-import { DEFAULT_STREAM_PRESET } from "../utils/simulateStream";
+import { DEFAULT_STREAM_PRESET, STREAM_PRESETS } from "../utils/simulateStream";
 import {
   DEFAULT_BOUNDS,
   DEFAULT_X_LABELS,
@@ -26,7 +26,28 @@ import { useRunApi } from "../hooks/useRunApi";
 const toDisplayName = (filename) =>
   filename.replace(/\.[^.]+$/, "").replace(/^.*[\\/]/, "");
 
-// ── Static fallback dataset (no file loaded, no stream, no API run) ──────────
+// ── Derive a sensible Y-axis label from the active data source ───────────────
+
+function deriveYAxisLabel({
+  runId,
+  streamPresetKey,
+  selectedFileName,
+  isStreaming,
+}) {
+  // Streaming preset has a label built-in
+  if (isStreaming) {
+    const preset = STREAM_PRESETS[streamPresetKey];
+    return preset?.label ?? "Value";
+  }
+  // File upload — use the filename stem
+  if (selectedFileName) return toDisplayName(selectedFileName);
+  // API run — generic until we have richer metadata
+  if (runId) return "Value";
+  // Mock fallback
+  return "Value (°C)";
+}
+
+// ── Static fallback dataset ──────────────────────────────────────────────────
 
 function buildMockDataset() {
   const labels = [];
@@ -49,11 +70,6 @@ function buildMockDataset() {
 function EChart(props) {
   const panelApi = props?.api;
   const linkScope = props?.params?.linkScope ?? "global";
-
-  /**
-   * runId is set when this panel was created from an API-sourced sidebar entry.
-   * It is null for manually-created panels (file upload / stream / mock).
-   */
   const runId = props?.params?.runId ?? null;
 
   const initialBounds = getBoundsFromPreset(DEFAULT_STREAM_PRESET);
@@ -63,7 +79,6 @@ function EChart(props) {
   const [streamPresetKey, setStreamPresetKey] = useState(DEFAULT_STREAM_PRESET);
   const [manualBounds, setManualBounds] = useState(initialBounds);
 
-  // ── Data source 1: simulated stream ────────────────────────────────────────
   const {
     dataset: streamDataset,
     isStreaming,
@@ -73,7 +88,6 @@ function EChart(props) {
     stopStream,
   } = useStreamingDataset({ manualBounds, streamPresetKey });
 
-  // ── Data source 2: API run ──────────────────────────────────────────────────
   const {
     dataset: apiDataset,
     isLoading: apiLoading,
@@ -81,30 +95,13 @@ function EChart(props) {
     refetch: refetchRun,
   } = useRunApi(runId);
 
-  // When the API run loads, update the tab title to the run name.
-  // (The API returns the name via fetchRun; we derive it from selectedFileName
-  //  which is set below when apiDataset arrives.)
-  useEffect(() => {
-    if (apiDataset && runId) {
-      // Title was already set from the sidebar entry name when the panel was
-      // created; nothing to do unless the user wants to override it.
-    }
-  }, [apiDataset, runId]);
-
-  // Propagate API errors into the shared error state.
   useEffect(() => {
     if (apiError) setError(apiError);
   }, [apiError]);
 
-  // ── Mock dataset (stable across re-renders) ────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const mockDataset = useMemo(() => buildMockDataset(), []);
 
-  // ── Active dataset priority ─────────────────────────────────────────────────
-  // 1. Streaming (user explicitly started it)
-  // 2. File-uploaded data (stored in streamDataset via setDatasetWithOutliers)
-  // 3. API run data
-  // 4. Mock fallback
   const dataset = streamDataset ?? apiDataset ?? mockDataset;
 
   const wrapperRef = useRef(null);
@@ -119,7 +116,6 @@ function EChart(props) {
   useDayHoverSync({ chartInstance, linkScope, dayToDataIndicesRef });
   const chartSize = useChartResize(wrapperRef, chartInstance);
 
-  // ── Settings popover close-on-outside-click / Escape ─────────────────────
   useEffect(() => {
     if (!isSettingsOpen) return;
     const onPointerDown = (e) => {
@@ -136,7 +132,6 @@ function EChart(props) {
     };
   }, [isSettingsOpen]);
 
-  // ── File import ────────────────────────────────────────────────────────────
   const { handleFileChange } = useFileImport({
     onDataset: setDatasetWithOutliers,
     onError: setError,
@@ -147,7 +142,6 @@ function EChart(props) {
     onStreamStop: stopStream,
   });
 
-  // ── Stream controls ────────────────────────────────────────────────────────
   const handleStartStream = useCallback(() => {
     const preset = startStream();
     setError("");
@@ -159,6 +153,14 @@ function EChart(props) {
     setStreamPresetKey(nextKey);
     setManualBounds(getBoundsFromPreset(nextKey));
   }, []);
+
+  // ── Derive axis labels ────────────────────────────────────────────────────
+  const yAxisLabel = deriveYAxisLabel({
+    runId,
+    streamPresetKey,
+    selectedFileName,
+    isStreaming,
+  });
 
   // ── Chart option ──────────────────────────────────────────────────────────
   const option = useMemo(() => {
@@ -199,7 +201,7 @@ function EChart(props) {
     const dayLabelStep = Math.max(1, Math.ceil(timeline.maxDay / 8));
 
     return {
-      grid: { left: 36, right: 14, top: 16, bottom: 28, containLabel: true },
+      grid: { left: 56, right: 20, top: 24, bottom: 44, containLabel: true },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
@@ -228,8 +230,20 @@ function EChart(props) {
         max: Math.max(0.999, timeline.maxDay - 0.000001),
         splitNumber: 8,
         minInterval: 1,
+        name: "Time",
+        nameLocation: "middle",
+        nameGap: 28,
+        nameTextStyle: {
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 11,
+          color: "#7a8fad",
+          fontWeight: 500,
+        },
         axisLabel: {
           hideOverlap: true,
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 10,
+          color: "#7a8fad",
           formatter: (value) => {
             if (!Number.isFinite(value)) return "";
             if (Math.abs(value - Math.round(value)) >= 0.001) return "";
@@ -240,7 +254,25 @@ function EChart(props) {
           },
         },
       },
-      yAxis: { type: "value", scale: true, boundaryGap: ["8%", "8%"] },
+      yAxis: {
+        type: "value",
+        scale: true,
+        boundaryGap: ["8%", "8%"],
+        name: yAxisLabel,
+        nameLocation: "middle",
+        nameGap: 48,
+        nameTextStyle: {
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 11,
+          color: "#7a8fad",
+          fontWeight: 500,
+        },
+        axisLabel: {
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 10,
+          color: "#7a8fad",
+        },
+      },
       series: [
         {
           type: "line",
@@ -252,13 +284,21 @@ function EChart(props) {
               {
                 yAxis: upperFence,
                 name: "Upper fence",
-                label: { formatter: "Upper" },
+                label: {
+                  formatter: "Upper",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 10,
+                },
                 lineStyle: { color: "#faad14", type: "dashed" },
               },
               {
                 yAxis: lowerFence,
                 name: "Lower fence",
-                label: { formatter: "Lower" },
+                label: {
+                  formatter: "Lower",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 10,
+                },
                 lineStyle: { color: "#faad14", type: "dashed" },
               },
             ],
@@ -319,11 +359,8 @@ function EChart(props) {
         },
       ],
     };
-  }, [dataset, isStreaming, manualBounds, streamOutlierPoints]);
+  }, [dataset, isStreaming, manualBounds, streamOutlierPoints, yAxisLabel]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  // Loading overlay for API-sourced panels.
   const showLoadingOverlay = apiLoading && !streamDataset;
 
   return (
@@ -361,7 +398,6 @@ function EChart(props) {
           isStreaming={isStreaming}
           onStartStream={handleStartStream}
           onStopStream={stopStream}
-          // API run props — null for manual panels
           runId={runId}
           apiLoading={apiLoading}
           onRefetchRun={refetchRun}
